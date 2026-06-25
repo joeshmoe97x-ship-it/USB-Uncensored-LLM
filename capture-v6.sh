@@ -51,9 +51,12 @@ print_phase 'A: pre-cleanup (also clears v1-v5 stale state)'
 # Docker-level stale state cleanup (no-match is OK)
 docker ps -aq --filter name=supabase 2>/dev/null | xargs -r docker stop 2>/dev/null
 ec=$?; printf 'docker-stop ec=%s\n' "$ec"
-docker ps -aq --filter name=supabase 2>/dev/null | xargs -r docker rm 2>/dev/null
-ec=$?; printf 'docker-rm ec=%s\n' "$ec"
-# Supabase CLI-level (with explicit ec)
+# Supabase CLI-level (with explicit ec) — handles any stopped-but-not-removed
+# containers from the docker-stop line above; suppressing the prior `docker rm`
+# avoids provoking a concurrent docker-daemon prune lock when supabase-start
+# also tries to do its own background bookkeeping (root cause of exit-31 in
+# prior HONEST captures). The supabase CLI is designed to remove stopped
+# containers implicitly during start, so explicit `docker rm` is redundant.
 (cd "$PROJECT_DIR" && supabase stop --no-backup 2>&1 | tail -5)
 ec=$?; printf 'supabase-stop ec=%s\n' "$ec"
 # Vite kill (with explicit ec; 1=no-match is OK)
@@ -102,7 +105,10 @@ docker exec -i "$DBCN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f /dev/s
 SEED_EC=$?
 T1=$(date +%s)
 printf 'seed-apply exit=%s elapsed=%ss container=%s\n' "$SEED_EC" "$((T1-T0))" "$DBCN"
-printf '-- last 10 lines of seed apply log --\n'
+# Use a single-argument %s format to avoid bash printf's flag-parsing of
+# `--` at format-string start (prior version emitted `printf: --: invalid
+# option` mid-block, killing B.5's log readability without breaking the apply).
+printf '%s\n' '-- last 10 lines of seed apply log --'
 tail -10 "${LOG}.seed" 2>/dev/null
 if [ "$SEED_EC" != "0" ]; then
   printf 'FATAL: supabase/seed.sql apply failed (exit 38); tail of seed log:\n'
