@@ -74,6 +74,42 @@ printf '-- last 30 lines --\n'
 tail -30 /tmp/build-log/supabase-start.log
 if [ "$SSTART_EC" != "0" ]; then printf 'FATAL: supabase start failed (exit 31)\n'; exit 31; fi
 
+print_phase 'B.5: replay supabase/seed.sql (idempotent) via docker exec'
+# Why this phase exists:
+#   Phase A wipes the running supabase container fleet (`docker stop | docker rm`
+#   on supabase_*) and Phase B's `supabase start` recreates containers + re-runs
+#   the migration files but NOT supabase/seed.sql. In environments where the
+#   seeded Postgres data is ephemeral (tmpfs, or a `docker volume rm` between
+#   captures), the recreated DB has fresh schema + ZERO test fixtures:
+#     - public.cameras = 0 rows
+#     - auth.users[viewer@omnisight.local] = absent
+#     - public.camera_access(viewer -> Shared Cam) = absent
+#   With fixtures missing, T-RLS-5 step-1 fails (`Shared Cam` locator not
+#   found), T-RLS-1..3 cascade to test.skip(true, "viewer not seeded ..."), and
+#   aggregate.all_passed_in_both_runs becomes false on every HONEST capture --
+#   despite the upstream T-RLS-5 refactors in fcc7289 / 6f8e7f7 / f36a9ec being
+#   correct in isolation.
+# seed.sql is already idempotent (every INSERT is ON CONFLICT DO NOTHING or DO
+# UPDATE), so the replay is a clean no-op when the data is already present.
+DBCN=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^supabase_db_' | head -1)
+printf 'seed_container=%s\n' "${DBCN:-NONE}"
+if [ -z "$DBCN" ]; then
+  printf 'FATAL: no supabase_db_* container running; seed replay impossible (exit 37)\n'
+  exit 37
+fi
+T0=$(date +%s)
+docker exec -i "$DBCN" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f /dev/stdin < "$PROJECT_DIR/supabase/seed.sql" > "${LOG}.seed" 2>&1
+SEED_EC=$?
+T1=$(date +%s)
+printf 'seed-apply exit=%s elapsed=%ss container=%s\n' "$SEED_EC" "$((T1-T0))" "$DBCN"
+printf '-- last 10 lines of seed apply log --\n'
+tail -10 "${LOG}.seed" 2>/dev/null
+if [ "$SEED_EC" != "0" ]; then
+  printf 'FATAL: supabase/seed.sql apply failed (exit 38); tail of seed log:\n'
+  tail -50 "${LOG}.seed"
+  exit 38
+fi
+
 print_phase 'C: readiness probe (max 120s)'
 poll_health() {
   local path="$1"; local max="${2:-120}"; local code=000; local elapsed=0
