@@ -82,7 +82,7 @@ async function ensureAdminAuthRow(service: SupabaseClient): Promise<void> {
   // code, "email_already_exists" code). All are benign in our context.
   const IDEMPOTENT_CREATE_USER_FAILURE = /(already.*registered|already.*exists|user_already_exists|email_already_exists)/i;
 
-  const { error: createErr } = await service.auth.admin.createUser({
+  const { data: createData, error: createErr } = await service.auth.admin.createUser({
     email: ADMIN_EMAIL,
     password: ADMIN_PASSWORD,
     email_confirm: true,                 // CRITICAL: without this, T-RLS-3..5 signIn fails
@@ -94,7 +94,50 @@ async function ensureAdminAuthRow(service: SupabaseClient): Promise<void> {
   // primary signal for the email_confirmed_at=null root cause).
   console.error('[globalSetup] adminErr=' + JSON.stringify(createErr));
 
-  if (!createErr) return;
+  // Patch the public.profiles row with role='admin' + status='active'.
+  // The handle_new_auth_user() trigger on auth.users INSERT reads
+  // raw_user_meta_data->>'role' but defaults to role='viewer' when
+  // public.profiles is already non-empty. seed.sql's Phase B.5 replay
+  // pre-populates the viewer profile BEFORE globalSetup runs, so the
+  // trigger's first-user-becomes-admin branch NEVER fires for admin;
+  // without this explicit patch the admin row stays at role='viewer'
+  // and assertAdmin returns 403 (cascading T-SHAPE-DEL/REV SKIP_COLDSTART
+  // + T-RLS-3 403 failure + T-RLS-11 Shared Cam locator loss). The patch
+  // is run on BOTH branches (fresh create + listUsers-recovery) so a
+  // re-run that hits the recovery path also re-applies the role.
+  async function patchAdminProfile(adminId: string, branch: 'create' | 'recovery'): Promise<void> {
+    // .select('id') is REQUIRED for the row-count check below to work:
+    // by default supabase-js returns data:null from .update() UNLESS chained
+    // with .select(), which makes the SQL become `UPDATE ... RETURNING id`.
+    // Without .select(), patchedRows is always null and the defensive
+    // WARNING would fire even when the update succeeded.
+    const { data: patchedRows, error: profileErr } = await service.from('profiles')
+      .update({ role: 'admin', status: 'active' })
+      .eq('id', adminId)
+      .select('id');
+    // patchedRows is now an array of {id} rows that matched (or [] if none).
+    // The 0-rows case = trigger race or stale id (handle_new_auth_user hadn't
+    // inserted the profiles row by the time we issued the UPDATE). Logging
+    // the affected row count makes a future trigger-async-regression loudly
+    // visible instead of silently leaving admin's role stuck at 'viewer'.
+    const affected = patchedRows?.length ?? 0;
+    if (profileErr) {
+      console.error(`[globalSetup] admin profile patch (${branch} path) error: ${profileErr.message}`);
+    } else if (affected === 0) {
+      console.error(`[globalSetup] admin profile patch (${branch} path) WARNING: 0 rows updated -- trigger race or stale id`);
+    } else {
+      console.error(`[globalSetup] admin profile patch (${branch} path) OK: ${affected} row(s)`);
+    }
+  }
+
+  if (!createErr) {
+    const adminId = createData?.user?.id;
+    if (!adminId) {
+      throw new Error('globalSetup admin createUser returned null user.data without an error');
+    }
+    await patchAdminProfile(adminId, 'create');
+    return;
+  }
   if (IDEMPOTENT_CREATE_USER_FAILURE.test(createErr.message)) {
     // Idempotent recovery: listUsers to find the existing row, then
     // updateUserById to force password + email_confirm so the row matches
@@ -120,6 +163,7 @@ async function ensureAdminAuthRow(service: SupabaseClient): Promise<void> {
       throw new Error(`globalSetup admin updateUserById failed: ${updateErr.message}`);
     }
     console.error('[globalSetup] admin updateUserById OK; email_confirm + password forced');
+    await patchAdminProfile(existingAdmin.id, 'recovery');
     return;
   }
   // Non-idempotent error: blow up.
