@@ -1,0 +1,214 @@
+{
+  "aggregate": {
+    "all_passed_in_both_runs": false,
+    "any_inconsistent_between_runs": false,
+    "any_with_documented_variance": true,
+    "cold_start_tests": [
+      "auth-rls.spec.ts / Supabase auth + RLS isolation / Unauthorized denial paths / viewer cannot create users via admin-users edge function"
+    ],
+    "dropped_in_run1_count": 0,
+    "dropped_in_run2_count": 0,
+    "runner_errors_run1_count": 0,
+    "runner_errors_run2_count": 0,
+    "total_duration_ms_canonical_sum": 24237,
+    "total_duration_ms_run1_first_sum": 24237,
+    "total_duration_ms_run2_first_sum": 22160,
+    "total_tests": 5
+  },
+  "capture_protocol": {
+    "env_export": [
+      "VITE_SUPABASE_URL      <- API_URL",
+      "VITE_SUPABASE_ANON_KEY <- ANON_KEY",
+      "SUPABASE_URL           <- API_URL (defensive)",
+      "SUPABASE_ANON_KEY      <- ANON_KEY (defensive)",
+      "SUPABASE_SERVICE_ROLE_KEY <- SERVICE_ROLE_KEY (defensive; RLS setup only)"
+    ],
+    "gate_no_fake": "NO FAKE MS VALUES -- durations are real ms from Playwright results[*].duration. Canonical = median of run1 attempts. cross-run first-attempt durations preserved for the variance audit.",
+    "idempotency_gating": "2 runs. Status strict-equal across runs IS mandatory. Duration drift is recorded per-row (duration_run1_first_ms + duration_run2_first_ms + variance_ratio + variance_ok); cold-vs-warm drift does NOT abort (cold-start is real, not flaky). only-in-run-1 / only-in-run-2 are recorded in dropped_in_run1[] / dropped_in_run2[] without aborting.",
+    "readiness_gate": [
+      "30s settle sleep",
+      "ss -tlnp port check",
+      "docker ps container health",
+      "HTTP /auth/v1/health + /rest/v1/ return 200",
+      "curl -sf http://127.0.0.1:5173 (Vite upstream)"
+    ],
+    "scrubbing": [
+      "sb_secret_* literal-sweep",
+      "JWT (eyJ...) regex-sweep",
+      "ANON_KEY + SERVICE_ROLE_KEY literal-sweep",
+      "public API_URL substring-sweep"
+    ],
+    "supabase_start": "`supabase start` with vector + studio disabled per `supabase/config.toml` (commit 5c1a0c0)",
+    "web_server": "`npm run dev` (Vite) in background before playwright runs; killed after both"
+  },
+  "captured_at": "2026-06-26T00:04:54Z",
+  "dropped_in_run1": [],
+  "dropped_in_run2": [],
+  "node_runtime": {
+    "note": "see docs/ops-notes.md -> \"Node 20 + Supabase realtime ws workaround\""
+  },
+  "playwright_env": {
+    "DEBUG": "pw:api",
+    "log": "/tmp/build-log/baseline-run.log",
+    "node_ws_workaround": "@supabase/realtime-js requires Node-native WebSocket OR `ws` shim via transport: ws (see docs/ops-notes.md)"
+  },
+  "runner_errors": {
+    "run1": [],
+    "run2": []
+  },
+  "status": "captured",
+  "tests": [
+    {
+      "ancestry": [
+        "auth-rls.spec.ts",
+        "Supabase auth + RLS isolation",
+        "Admin grant-revoke life-cycles",
+        "admin can grant viewer access via admin-users grant_access action"
+      ],
+      "attempts_run1": 1,
+      "attempts_run2": 1,
+      "column": 3,
+      "duration_ms": 161,
+      "duration_run1_first_ms": 161,
+      "duration_run2_first_ms": 171,
+      "error_run1_final": null,
+      "error_run2_final": null,
+      "file": "auth-rls.spec.ts",
+      "id": "T-RLS-1",
+      "line": 134,
+      "project": "chromium",
+      "skipped_reason_run1": "viewer not seeded \u2014 run the main test first to provision",
+      "skipped_reason_run2": "viewer not seeded \u2014 run the main test first to provision",
+      "status": "skipped",
+      "status_run1_final": "skipped",
+      "status_run2_final": "skipped",
+      "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can grant viewer access via admin-users grant_access action",
+      "variance_ok": true,
+      "variance_ratio": 1.06
+    },
+    {
+      "ancestry": [
+        "auth-rls.spec.ts",
+        "Supabase auth + RLS isolation",
+        "Admin grant-revoke life-cycles",
+        "admin can revoke viewer access via admin-users revoke_access action; viewer denied at RLS post-revoke"
+      ],
+      "attempts_run1": 1,
+      "attempts_run2": 1,
+      "column": 3,
+      "duration_ms": 148,
+      "duration_run1_first_ms": 148,
+      "duration_run2_first_ms": 142,
+      "error_run1_final": null,
+      "error_run2_final": null,
+      "file": "auth-rls.spec.ts",
+      "id": "T-RLS-2",
+      "line": 209,
+      "project": "chromium",
+      "skipped_reason_run1": "viewer not seeded \u2014 run the main test first to provision",
+      "skipped_reason_run2": "viewer not seeded \u2014 run the main test first to provision",
+      "status": "skipped",
+      "status_run1_final": "skipped",
+      "status_run2_final": "skipped",
+      "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can revoke viewer access via admin-users revoke_access action; viewer denied at RLS post-revoke",
+      "variance_ok": true,
+      "variance_ratio": 1.04
+    },
+    {
+      "ancestry": [
+        "auth-rls.spec.ts",
+        "Supabase auth + RLS isolation",
+        "Admin grant-revoke life-cycles",
+        "fast-flow: viewer-denied grant + admin grants + admin revokes (baseline asserts covered by tests 1\u20134)"
+      ],
+      "attempts_run1": 1,
+      "attempts_run2": 1,
+      "column": 3,
+      "duration_ms": 196,
+      "duration_run1_first_ms": 196,
+      "duration_run2_first_ms": 189,
+      "error_run1_final": null,
+      "error_run2_final": null,
+      "file": "auth-rls.spec.ts",
+      "id": "T-RLS-3",
+      "line": 328,
+      "project": "chromium",
+      "skipped_reason_run1": "viewer profile not seeded \u2014 run the main test first to provision",
+      "skipped_reason_run2": "viewer profile not seeded \u2014 run the main test first to provision",
+      "status": "skipped",
+      "status_run1_final": "skipped",
+      "status_run2_final": "skipped",
+      "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / fast-flow: viewer-denied grant + admin grants + admin revokes (baseline asserts covered by tests 1\u20134)",
+      "variance_ok": true,
+      "variance_ratio": 1.04
+    },
+    {
+      "ancestry": [
+        "auth-rls.spec.ts",
+        "Supabase auth + RLS isolation",
+        "Unauthorized denial paths",
+        "viewer cannot create users via admin-users edge function"
+      ],
+      "attempts_run1": 1,
+      "attempts_run2": 1,
+      "column": 3,
+      "duration_ms": 2390,
+      "duration_run1_first_ms": 2390,
+      "duration_run2_first_ms": 283,
+      "error_run1_final": null,
+      "error_run2_final": null,
+      "file": "auth-rls.spec.ts",
+      "id": "T-RLS-4",
+      "line": 80,
+      "project": "chromium",
+      "skipped_reason_run1": null,
+      "skipped_reason_run2": null,
+      "status": "passed",
+      "status_run1_final": "passed",
+      "status_run2_final": "passed",
+      "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Unauthorized denial paths / viewer cannot create users via admin-users edge function",
+      "variance_ok": false,
+      "variance_ratio": 8.45
+    },
+    {
+      "ancestry": [
+        "auth-rls.spec.ts",
+        "Supabase auth + RLS isolation",
+        "Viewer isolation paths",
+        "viewer cannot see admin private cameras; can see shared ones"
+      ],
+      "attempts_run1": 1,
+      "attempts_run2": 1,
+      "column": 3,
+      "duration_ms": 21342,
+      "duration_run1_first_ms": 21342,
+      "duration_run2_first_ms": 21375,
+      "error_run1_final": {
+        "location_column": 8,
+        "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/auth-rls.spec.ts",
+        "location_line": 40,
+        "message": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 20000ms\n  - waiting for getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\n",
+        "snippet": "  38 |     // admin sees BOTH cameras via is_admin() RLS\n  39 |     await expect(page.getByTestId('camera-card').filter({ hasText: SHARED_CAM }))\n> 40 |       .toBeVisible({ timeout: 20_000 });\n     |        ^\n  41 |     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))\n  42 |       .toBeVisible({ timeout: 20_000 });\n  43 |"
+      },
+      "error_run2_final": {
+        "location_column": 8,
+        "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/auth-rls.spec.ts",
+        "location_line": 40,
+        "message": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 20000ms\n  - waiting for getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\n",
+        "snippet": "  38 |     // admin sees BOTH cameras via is_admin() RLS\n  39 |     await expect(page.getByTestId('camera-card').filter({ hasText: SHARED_CAM }))\n> 40 |       .toBeVisible({ timeout: 20_000 });\n     |        ^\n  41 |     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))\n  42 |       .toBeVisible({ timeout: 20_000 });\n  43 |"
+      },
+      "file": "auth-rls.spec.ts",
+      "id": "T-RLS-5",
+      "line": 27,
+      "project": "chromium",
+      "skipped_reason_run1": null,
+      "skipped_reason_run2": null,
+      "status": "failed",
+      "status_run1_final": "failed",
+      "status_run2_final": "failed",
+      "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Viewer isolation paths / viewer cannot see admin private cameras; can see shared ones",
+      "variance_ok": true,
+      "variance_ratio": 1.0
+    }
+  ]
+}
