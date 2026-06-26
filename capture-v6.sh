@@ -59,6 +59,14 @@ ec=$?; printf 'docker-stop ec=%s\n' "$ec"
 # containers implicitly during start, so explicit `docker rm` is redundant.
 (cd "$PROJECT_DIR" && supabase stop --no-backup 2>&1 | tail -5)
 ec=$?; printf 'supabase-stop ec=%s\n' "$ec"
+# Volume cleanup: a prior partial-init postgres data dir on a stale `supabase_db_*`
+# volume causes Phase B's `Initialising schema...` to receive SIGTERM (exit 143)
+# when the docker daemon rejects the new container's data-dir mount. Wipe all
+# supabase_* volumes so the next `supabase start` initialises migrations from a
+# clean slate. Volumes survive `supabase stop --no-backup` (only containers are
+# removed); exit code 1 on this filter is no-match and OK.
+docker volume ls -q --filter name=supabase 2>/dev/null | xargs -r docker volume rm 2>/dev/null
+ec=$?; printf 'supabase-volume-rm ec=%s (1=no-match-OK)\n' "$ec"
 # Vite kill (with explicit ec; 1=no-match is OK)
 pkill -f vite 2>/dev/null
 ec=$?; printf 'pkill-vite ec=%s (1=no-match-OK)\n' "$ec"
