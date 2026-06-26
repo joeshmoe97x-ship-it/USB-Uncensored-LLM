@@ -10,9 +10,9 @@
     "dropped_in_run2_count": 0,
     "runner_errors_run1_count": 0,
     "runner_errors_run2_count": 0,
-    "total_duration_ms_canonical_sum": 25851,
-    "total_duration_ms_run1_first_sum": 25851,
-    "total_duration_ms_run2_first_sum": 23875,
+    "total_duration_ms_canonical_sum": 65871,
+    "total_duration_ms_run1_first_sum": 65871,
+    "total_duration_ms_run2_first_sum": 63412,
     "total_tests": 11
   },
   "capture_protocol": {
@@ -41,7 +41,7 @@
     "supabase_start": "`supabase start` with vector + studio disabled per `supabase/config.toml` (commit 5c1a0c0)",
     "web_server": "`npm run dev` (Vite) in background before playwright runs; killed after both"
   },
-  "captured_at": "2026-06-26T04:30:33Z",
+  "captured_at": "2026-06-26T18:57:04Z",
   "dropped_in_run1": [],
   "dropped_in_run2": [],
   "node_runtime": {
@@ -67,9 +67,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 469,
-      "duration_run1_first_ms": 469,
-      "duration_run2_first_ms": 528,
+      "duration_ms": 456,
+      "duration_run1_first_ms": 456,
+      "duration_run2_first_ms": 447,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -83,7 +83,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity for delete_user: nested + flat both delete fixture users with byte-identical success",
       "variance_ok": true,
-      "variance_ratio": 1.13
+      "variance_ratio": 1.02
     },
     {
       "ancestry": [
@@ -94,9 +94,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 322,
-      "duration_run1_first_ms": 322,
-      "duration_run2_first_ms": 417,
+      "duration_ms": 342,
+      "duration_run1_first_ms": 342,
+      "duration_run2_first_ms": 442,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -110,7 +110,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity for revoke_access: nested + flat both surface ok+revoked_at; contract is shape-parallel, not byte-identical",
       "variance_ok": true,
-      "variance_ratio": 1.3
+      "variance_ratio": 1.29
     },
     {
       "ancestry": [
@@ -121,9 +121,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 2481,
-      "duration_run1_first_ms": 2481,
-      "duration_run2_first_ms": 285,
+      "duration_ms": 2763,
+      "duration_run1_first_ms": 2763,
+      "duration_run2_first_ms": 301,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -137,7 +137,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity: nested + flat shapes both insert with byte-identical success",
       "variance_ok": false,
-      "variance_ratio": 8.71
+      "variance_ratio": 9.18
     },
     {
       "ancestry": [
@@ -148,9 +148,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 121,
-      "duration_run1_first_ms": 121,
-      "duration_run2_first_ms": 125,
+      "duration_ms": 124,
+      "duration_run1_first_ms": 124,
+      "duration_run2_first_ms": 116,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -164,7 +164,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot delete_user under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.03
+      "variance_ratio": 1.07
     },
     {
       "ancestry": [
@@ -175,9 +175,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 123,
-      "duration_run1_first_ms": 123,
-      "duration_run2_first_ms": 118,
+      "duration_ms": 126,
+      "duration_run1_first_ms": 126,
+      "duration_run2_first_ms": 122,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -191,7 +191,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot grant_access under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.04
+      "variance_ratio": 1.03
     },
     {
       "ancestry": [
@@ -202,9 +202,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 125,
-      "duration_run1_first_ms": 125,
-      "duration_run2_first_ms": 126,
+      "duration_ms": 120,
+      "duration_run1_first_ms": 120,
+      "duration_run2_first_ms": 116,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -218,7 +218,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot revoke_access under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.01
+      "variance_ratio": 1.03
     },
     {
       "ancestry": [
@@ -230,9 +230,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 215,
-      "duration_run1_first_ms": 215,
-      "duration_run2_first_ms": 209,
+      "duration_ms": 210,
+      "duration_run1_first_ms": 210,
+      "duration_run2_first_ms": 228,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -246,7 +246,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can grant viewer access via admin-users grant_access action",
       "variance_ok": true,
-      "variance_ratio": 1.03
+      "variance_ratio": 1.09
     },
     {
       "ancestry": [
@@ -258,9 +258,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 332,
-      "duration_run1_first_ms": 332,
-      "duration_run2_first_ms": 339,
+      "duration_ms": 415,
+      "duration_run1_first_ms": 415,
+      "duration_run2_first_ms": 335,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -274,7 +274,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can revoke viewer access via admin-users revoke_access action; viewer denied at RLS post-revoke",
       "variance_ok": true,
-      "variance_ratio": 1.02
+      "variance_ratio": 1.24
     },
     {
       "ancestry": [
@@ -286,9 +286,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 324,
-      "duration_run1_first_ms": 324,
-      "duration_run2_first_ms": 414,
+      "duration_ms": 348,
+      "duration_run1_first_ms": 348,
+      "duration_run2_first_ms": 329,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -302,7 +302,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / fast-flow: viewer-denied grant + admin grants + admin revokes (baseline asserts covered by tests 1\u20134)",
       "variance_ok": true,
-      "variance_ratio": 1.28
+      "variance_ratio": 1.06
     },
     {
       "ancestry": [
@@ -314,9 +314,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 247,
-      "duration_run1_first_ms": 247,
-      "duration_run2_first_ms": 241,
+      "duration_ms": 261,
+      "duration_run1_first_ms": 261,
+      "duration_run2_first_ms": 272,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -330,7 +330,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Unauthorized denial paths / viewer cannot create users via admin-users edge function",
       "variance_ok": true,
-      "variance_ratio": 1.02
+      "variance_ratio": 1.04
     },
     {
       "ancestry": [
@@ -342,22 +342,22 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 21092,
-      "duration_run1_first_ms": 21092,
-      "duration_run2_first_ms": 21073,
+      "duration_ms": 60706,
+      "duration_run1_first_ms": 60706,
+      "duration_run2_first_ms": 60704,
       "error_run1_final": {
-        "location_column": 8,
-        "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/auth-rls.spec.ts",
-        "location_line": 40,
-        "message": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 20000ms\n  - waiting for getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\n",
-        "snippet": "  38 |     // admin sees BOTH cameras via is_admin() RLS\n  39 |     await expect(page.getByTestId('camera-card').filter({ hasText: SHARED_CAM }))\n> 40 |       .toBeVisible({ timeout: 20_000 });\n     |        ^\n  41 |     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))\n  42 |       .toBeVisible({ timeout: 20_000 });\n  43 |"
+        "location_column": null,
+        "location_file": null,
+        "location_line": null,
+        "message": "Test timeout of 60000ms exceeded.",
+        "snippet": null
       },
       "error_run2_final": {
-        "location_column": 8,
-        "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/auth-rls.spec.ts",
-        "location_line": 40,
-        "message": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" with timeout 20000ms\n  - waiting for getByTestId('camera-card').filter({ hasText: 'Shared Cam' })\n",
-        "snippet": "  38 |     // admin sees BOTH cameras via is_admin() RLS\n  39 |     await expect(page.getByTestId('camera-card').filter({ hasText: SHARED_CAM }))\n> 40 |       .toBeVisible({ timeout: 20_000 });\n     |        ^\n  41 |     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))\n  42 |       .toBeVisible({ timeout: 20_000 });\n  43 |"
+        "location_column": null,
+        "location_file": null,
+        "location_line": null,
+        "message": "Test timeout of 60000ms exceeded.",
+        "snippet": null
       },
       "file": "auth-rls.spec.ts",
       "id": "T-RLS-11",
@@ -365,9 +365,9 @@
       "project": "chromium",
       "skipped_reason_run1": null,
       "skipped_reason_run2": null,
-      "status": "failed",
-      "status_run1_final": "failed",
-      "status_run2_final": "failed",
+      "status": "timedOut",
+      "status_run1_final": "timedOut",
+      "status_run2_final": "timedOut",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Viewer isolation paths / viewer cannot see admin private cameras; can see shared ones",
       "variance_ok": true,
       "variance_ratio": 1.0
