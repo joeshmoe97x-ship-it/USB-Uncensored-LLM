@@ -346,6 +346,144 @@ Open a separate, deliberate PR that adds the `[analytics] enabled = false` and `
 Once that PR lands + merges, the deferred `tests/e2e/_baseline-run.json` stub (per `ba05f73`) can be replaced by a real capture.
 
 
+## Bug E lock-in workflow
+
+A four-artifact design — defensive fallback shape, regression lock-in spec, capture-v6 cycle, on-demand validator — that pins Bug E (the 12-per-run `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` from `CameraGrid.tsx:296`) closed across both regression windows without depending on any single component's incidental behavior. Each artifact addresses a different failure domain; losing any one of them would let a future regression land silently.
+
+### Artifacts at HEAD
+
+#### 1. The defensive fallback shape — `commit 37ae861` + amendment `c2ee264`
+
+The four guarded components all use bracket-syntax indexing with `?? FALLBACK`:
+
+| File | Indexed table | Verbatim shape | Defensive against |
+|---|---|---|---|
+| `app/src/components/CameraGrid.tsx` (L138) | `BRAND[cam.brand as keyof typeof BRAND]` | `?? { cls: '...', label: String(cam.brand ?? '').toUpperCase() }` | unsupported `brand` strings |
+| `app/src/components/EvidenceLocker.tsx` | `TYPE_META[type]`, `STATUS_META[status]` | `?? TYPE_META.log_bundle` / `?? STATUS_META.ready` | unsupported `type`/`status` |
+| `app/src/components/EventsList.tsx` | `SEVERITY[severity]`, `TYPE_ICONS[type]` | `?? FALLBACK` / `?? FALLBACK_ICON` | unsupported `severity`/`type` |
+| `app/src/components/ThreatMonitor.tsx` | `TYPE_META[type]` | `?? FALLBACK` | unsupported `type` |
+
+The verbatim `CameraGrid.tsx` pattern at L138:
+
+```typescript
+const brand = BRAND[cam.brand as keyof typeof BRAND] ?? { cls: 'text-gray-300 bg-white/5 border-white/10', label: String(cam.brand ?? '').toUpperCase() };
+```
+
+This is the load-bearing invariant. **Reverting any single one** of the four to bare bracket-syntax lookup (`BRAND[cam.brand]` without `?? FALLBACK`) will re-introduce the original Bug E symptom the next time the camera list expands. The documented trigger was `commit 1e8c5811`'s 2→11 seeded-brand expansion in `supabase/seed.sql` — the seed grew past the 4-key `BRAND` literal's coverage without the reactivity that `?? FALLBACK` provides.
+
+#### 2. The regression lock-in spec — `commit 27323db` (`tests/e2e/bug-e-brand-divergence.spec.ts`)
+
+A single-test spec that:
+
+1. Pre-cleans any prior `f00dbabe-0000-0000-0000-000000000001` row (idempotent against interrupted runs).
+2. Inserts a divergent cameras row with `brand='unsupported_test_brand'` — a synthetic name outside the 4-key `BRAND` literal AND outside the wider 11-seeded set.
+3. Signs in via the browser (mirrors `auth-rls.spec.ts`'s login flow).
+4. Asserts the seeded card IS visible via `expect(...).toBeVisible({ timeout: 20_000 })`.
+5. Asserts **zero `[pageerror]` lines** are emitted during render via `captureConsoleAndNetwork`. This is the primary regression lock-in: a future contributor reverting any of the four guarded `??` fallbacks would surface `[pageerror] TypeError: ... reading 'cls' ...` directly in the captured stderr instead of degrading to a 60s locator-timeout symptom (which is exactly what `auth-rls.spec.ts`'s `T-RLS-11` was suffering through before the fix).
+6. Asserts the brand badge shows `UNSUPPORTED_TEST_BRAND` (the nullish-coalescing fallback label, not the throwing path).
+7. Post-cleans via `test.afterAll` — soft-fails on delete error so the spec never collapses purely on a DB-side hiccup at teardown.
+
+The spec's schema source of truth is `app/supabase/migrations/20250101000000_init_schema.sql` (per its top-of-file JSDoc), and the UUID inventory check at top is explicit about slot reuse (`f00dbabe-...-001` is synthetic, no collision risk with the 12 seeded admin/seed fixtures — it sits outside seed.sql's inventory as a deliberately visible synthetic marker).
+
+#### 3. capture-v6.sh Phase F + Phase G mirror — `commit 7b0904b`
+
+The two cold/warm Playwright runs share an explicit, identical test list:
+
+```bash
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 \
+  tests/e2e/auth-rls.spec.ts \
+  tests/e2e/admin-users-shapes.spec.ts \
+  tests/e2e/bug-e-brand-divergence.spec.ts \
+  --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
+# Phase G mirrors the same list verbatim (same argv, different output files)
+```
+
+`scrub_and_build.py` keys leaves by `spec_meta` + line + column fingerprint; mismatched Phase F/G lists would mark the new spec `dropped_in_run1` or `dropped_in_run2`, producing a partial baseline that overstates regression coverage. The mirror invariant is enforced by an explicit comment in `capture-v6.sh` Phase G explaining why the order matters.
+
+The T-RLS-* index in `_baseline-run.json`'s `tests[]` array comes from `scrub_and_build.py`'s sorted-set intersection of both runs — `bug-e-brand-divergence.spec.ts` lands at **T-RLS-12** because its filename sorts last among the three (`admin-users-shapes` < `auth-rls` < `bug-e`). Playwright's own test-discovery order is filesystem-walk-order and is NOT what produces the T-RLS-* index.
+
+> **JSDoc caveat**: `tests/e2e/bug-e-brand-divergence.spec.ts`'s top-of-file comment still says "Capture-v6 inclusion: INTENTIONALLY OMITTED". That note was true at the time of `27323db` but is **stale** as of `7b0904b`. Update the spec's JSDoc to point to the new capture-v6 Phase F+G wiring in a followup commit.
+
+#### 4. On-demand validator — `/tmp/build-log/validate-divergence-spec.sh`
+
+A 156-line, single-stack-up shell script that lives off-repo for a reason: it is a **per-host operational artifact** — each maintainer's stack-up produces slightly different captures and per-session log paths, so the validator is **re-derived per session**. Re-creating it after a `/tmp` tmpfs clear or on a fresh host is documented in the script's header comment. The script's durable logic:
+
+- **Idempotent**: kills any prior vite (`pkill -f vite`), then reuses whatever's already started if vite is alive (so subsequent invocations skip the 30s vite cold-compile window).
+- **Two-tier env guard**: `exit 74` if `/tmp/build-log/sb-status.json` is missing; `exit 33` if the file is present but `API_URL`/`ANON_KEY`/`SERVICE_ROLE_KEY` are empty (defends against silently propagating empty env vars, which would mask the JWT-layer failure as a generic spec error at test-time rather than at validator-time).
+- **`nohup + disown`** for vite launching (validated portable detachment pattern; the subshell+SIGHUP trap of plain `&` was the root cause of prior silent failures).
+- **IPv4 base URL** (`http://127.0.0.1:5173`, not `localhost`) for Playwright — `nohup npm run dev` binds on `127.0.0.1` per `camaras/package.json` and Linux's `/etc/hosts` resolves `localhost` to `::1` (IPv6) first, producing `ERR_CONNECTION_REFUSED` even when curl-`127.0.0.1` returns 200.
+- **60-second readiness poll** (12*5s via `curl --max-time 2` per iteration; one curl request per 5s prevents hangs from stalling the gate).
+- **Spec invocation**: `E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test tests/e2e/bug-e-brand-divergence.spec.ts --reporter=line >/tmp/build-log/spec-phase1.log 2>&1` with exit code captured via `$?`.
+- **Persistence**: leaves vite alive at end so subsequent invocations skip the 30s cold-compile.
+
+### Offline-first stack-up commands
+
+For a fresh stack bring-up on a host that does NOT have `capture-v6.sh`'s full orchestration available (CI runner, contributor laptop without supabase CLI, recorder-less debugging session, etc.), the minimal validation sequence is:
+
+```bash
+# 1. cd + supabase start (cold 30–60s; warm 10–15s; --no-backup preserves db state across restarts)
+cd /home/bgdaddy/USB-Uncensored-LLM/Linux/app
+supabase start
+
+# 2. Capture sb-status.json (3 keys needed: API_URL, ANON_KEY, SERVICE_ROLE_KEY)
+supabase status -o json > /tmp/build-log/sb-status.json
+
+# 3. Start vite with explicit IPv4 bind + VALIDATED detachment pattern
+#    (nohup + disown; NOT plain &. Plain & only backgrounds within the subshell,
+#    then SIGHUP kills the child on subshell exit — this was a load-bearing fix.)
+nohup env \
+  VITE_SUPABASE_URL="$(jq -r .API_URL /tmp/build-log/sb-status.json)" \
+  VITE_SUPABASE_ANON_KEY="$(jq -r .ANON_KEY /tmp/build-log/sb-status.json)" \
+  npm run dev </dev/null >/tmp/build-log/vite-dev.log 2>&1 &
+disown $!
+echo "vite-pid=$!"
+
+# 4. Poll 127.0.0.1:5173 readiness (12*5s = 60s budget; --max-time 2 prevents hangs)
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  sleep 5
+  curl -fsS -o /dev/null --max-time 2 http://127.0.0.1:5173 \
+    && { echo "vite-OK after $((i*5))s"; break; }
+  [ $i -eq 12 ] && { echo "vite-FAIL after 60s"; tail -20 /tmp/build-log/vite-dev.log; }
+done
+
+# 5. Run the spec with E2E_BASE_URL explicit IPv4 override
+#    (playwright.config.ts reads E2E_BASE_URL at config-load time; never mutate
+#     this env var between runs in a single capture cycle)
+E2E_BASE_URL=http://127.0.0.1:5173 npx playwright test \
+  tests/e2e/bug-e-brand-divergence.spec.ts --reporter=line
+```
+
+For a one-shot invocation that wraps steps 1–5 in a single file (and persists the validator across stack-up cycles): copy `/tmp/build-log/validate-divergence-spec.sh` to the new host, then `bash /tmp/build-log/validate-divergence-spec.sh`.
+
+### Why all four artifacts exist
+
+| Failure domain | Caught by | Symptom if missing |
+|---|---|---|
+| Unsupported `brand` value in seeded data | (1) defensive fallback at CameraGrid.tsx L138 + 3 siblings | `TypeError: Cannot read properties of undefined (reading 'cls')` per render — 12 pageerrors per capture cycle |
+| Future regression of the fallback shape | (2) regression spec — positive assertion that any-of-4 fallbacks protect the render | silent regression: rendering breaks but smoke tests don't notice because the smoke path uses a known-supported brand |
+| "Spec exists but never ran" silent regression | (3) capture-v6 wiring — Phase F + G mirror pick it up every cycle | spec drifts to green-once-then-broken; the first time a contributor silently removes it from Phase F+G the regression has zero signal |
+| "Production build" / local CI / contributor laptop | (4) on-demand validator — `bash /tmp/build-log/validate-divergence-spec.sh` | contributor can't reproduce the green locally; CI without supabase stack can't run the spec |
+
+Each covers a different failure surface; collapsing any one of them would let the regression resurface. Together they form a closed loop:
+
+- **(1)** prevents the symptom at runtime.
+- **(2)** verifies the prevention at test-time every cycle.
+- **(3)** ensures (2) actually runs every cycle (not neglected as a one-shot then forgotten).
+- **(4)** lets a contributor reproduce (2)+(3)'s green signal locally without spinning up capture-v6's full orchestration.
+
+### Cross-references
+
+- [`Recommended Next Step` H2 above](#recommended-next-step-outside-this-commit) — the deferred analytics/inbucket disable path; orthogonal to Bug E but cited for capture-cycle context.
+- [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) is NOT yet in the sentinel table; flag for a followup commit so triage picks it up automatically.
+- `app/src/components/CameraGrid.tsx:138` (verbatim defensive pattern).
+- `app/tests/e2e/bug-e-brand-divergence.spec.ts` (regression spec, 4 step names + afterAll + pageerror-array assertion at STEP 5).
+- `capture-v6.sh` Phase F (≈ line 271) + Phase G (≈ line 297) (mirror invariant).
+- `/tmp/build-log/validate-divergence-spec.sh` (per-host validator, 156 lines, two-tier env guard).
+- `app/tests/e2e/_baseline-run.json` T-RLS-12 row (passed × 2 across both runs as of `eacaceb`).
+
+The new section slug `#bug-e-lock-in-workflow` does not collide with any anchor in the [`Anchor collision covenant` H2 above](#anchor-collision-covenant) inventory.
+
+
 ## Capture-test triage cheat-sheet
 
 This is the **forward-going** index for the failure modes that next maintainers will most often hit when triaging capture-v6 output. It complements [`Capture Attempt Log`](#capture-attempt-log) below (which is historical/archaeological) and points at `app/docs/bug-diagnoses.md` for the full diagnosis prose.
