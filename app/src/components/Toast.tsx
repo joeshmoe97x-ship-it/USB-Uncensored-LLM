@@ -42,6 +42,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Hoist the info palette so any out-of-union ToastType drift falls back to a single
+// canonical shape (avoids duplication; easy for a future maintainer to extend when
+// adding a 5th ToastType -- update the literal map AND OR invert the fallback).
+const INFO_PALETTE = {
+  ring: 'ring-blue-500/30',
+  bg:   'bg-blue-500/10',
+  text: 'text-blue-300',
+  Icon: Info,
+};
+
 function ToastCard({ t, dismiss }: { t: ToastItem; dismiss: (id: string) => void }) {
   // Stash dismiss in a ref so the auto-dismiss timer doesn't reset on every
   // parent re-render (parent's `dismiss` gets a new identity each render).
@@ -53,12 +63,13 @@ function ToastCard({ t, dismiss }: { t: ToastItem; dismiss: (id: string) => void
     return () => clearTimeout(timer);
   }, [t.id]);
 
+  // Fallback for any out-of-union ToastType drift; defaults to neutral info-blue.
   const palette = {
     success: { ring: 'ring-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-300', Icon: CheckCircle2 },
     error:   { ring: 'ring-red-500/30',     bg: 'bg-red-500/10',     text: 'text-red-300',     Icon: XCircle },
     warning: { ring: 'ring-amber-500/30',   bg: 'bg-amber-500/10',   text: 'text-amber-300',   Icon: AlertTriangle },
-    info:    { ring: 'ring-blue-500/30',    bg: 'bg-blue-500/10',    text: 'text-blue-300',    Icon: Info },
-  }[t.type];
+    info:    INFO_PALETTE,
+  }[t.type] ?? INFO_PALETTE;
 
   const Icon = palette.Icon;
 
