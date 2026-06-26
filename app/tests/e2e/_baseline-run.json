@@ -10,9 +10,9 @@
     "dropped_in_run2_count": 0,
     "runner_errors_run1_count": 0,
     "runner_errors_run2_count": 0,
-    "total_duration_ms_canonical_sum": 24396,
-    "total_duration_ms_run1_first_sum": 24396,
-    "total_duration_ms_run2_first_sum": 22258,
+    "total_duration_ms_canonical_sum": 24326,
+    "total_duration_ms_run1_first_sum": 24326,
+    "total_duration_ms_run2_first_sum": 22257,
     "total_tests": 11
   },
   "capture_protocol": {
@@ -41,7 +41,7 @@
     "supabase_start": "`supabase start` with vector + studio disabled per `supabase/config.toml` (commit 5c1a0c0)",
     "web_server": "`npm run dev` (Vite) in background before playwright runs; killed after both"
   },
-  "captured_at": "2026-06-26T02:59:37Z",
+  "captured_at": "2026-06-26T03:06:56Z",
   "dropped_in_run1": [],
   "dropped_in_run2": [],
   "node_runtime": {
@@ -121,9 +121,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 2319,
-      "duration_run1_first_ms": 2319,
-      "duration_run2_first_ms": 175,
+      "duration_ms": 2273,
+      "duration_run1_first_ms": 2273,
+      "duration_run2_first_ms": 170,
       "error_run1_final": {
         "location_column": 69,
         "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/admin-users-shapes.spec.ts",
@@ -149,7 +149,7 @@
       "status_run2_final": "failed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity: nested + flat shapes both insert with byte-identical success",
       "variance_ok": false,
-      "variance_ratio": 13.25
+      "variance_ratio": 13.37
     },
     {
       "ancestry": [
@@ -242,9 +242,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 153,
-      "duration_run1_first_ms": 153,
-      "duration_run2_first_ms": 158,
+      "duration_ms": 151,
+      "duration_run1_first_ms": 151,
+      "duration_run2_first_ms": 155,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -270,9 +270,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 154,
-      "duration_run1_first_ms": 154,
-      "duration_run2_first_ms": 138,
+      "duration_ms": 149,
+      "duration_run1_first_ms": 149,
+      "duration_run2_first_ms": 153,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -286,7 +286,7 @@
       "status_run2_final": "skipped",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can revoke viewer access via admin-users revoke_access action; viewer denied at RLS post-revoke",
       "variance_ok": true,
-      "variance_ratio": 1.12
+      "variance_ratio": 1.03
     },
     {
       "ancestry": [
@@ -298,9 +298,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 193,
-      "duration_run1_first_ms": 193,
-      "duration_run2_first_ms": 186,
+      "duration_ms": 191,
+      "duration_run1_first_ms": 191,
+      "duration_run2_first_ms": 191,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -314,7 +314,7 @@
       "status_run2_final": "skipped",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / fast-flow: viewer-denied grant + admin grants + admin revokes (baseline asserts covered by tests 1\u20134)",
       "variance_ok": true,
-      "variance_ratio": 1.04
+      "variance_ratio": 1.0
     },
     {
       "ancestry": [
@@ -326,9 +326,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 269,
-      "duration_run1_first_ms": 269,
-      "duration_run2_first_ms": 263,
+      "duration_ms": 250,
+      "duration_run1_first_ms": 250,
+      "duration_run2_first_ms": 243,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -342,7 +342,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Unauthorized denial paths / viewer cannot create users via admin-users edge function",
       "variance_ok": true,
-      "variance_ratio": 1.02
+      "variance_ratio": 1.03
     },
     {
       "ancestry": [
@@ -354,9 +354,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 21308,
-      "duration_run1_first_ms": 21308,
-      "duration_run2_first_ms": 21338,
+      "duration_ms": 21312,
+      "duration_run1_first_ms": 21312,
+      "duration_run2_first_ms": 21345,
       "error_run1_final": {
         "location_column": 8,
         "location_file": "/home/bgdaddy/USB-Uncensored-LLM/Linux/app/tests/e2e/auth-rls.spec.ts",
