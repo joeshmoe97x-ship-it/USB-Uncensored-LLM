@@ -151,19 +151,20 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
       .maybeSingle();
     expect(flatRow, 'flat shape: camera_access row must be inserted').toBeTruthy();
 
-    // ----- 3. The back-compat invariant: response envelope contract -----
-    // Both shapes must yield byte-identical body. This is an explicit
-    // response-envelope contract for `grant_access` specifically — which
-    // returns `return json({ ok: true });` with NO dynamic fields. Other
-    // actions surface dynamic fields and would NOT satisfy this
-    // byte-identical assertion if extended to them:
-    //   - `revoke_access` adds `revoked_at: new Date().toISOString()`
-    //   - `create_user`  adds `user_id` and `email` from auth.admin.createUser
-    //   - `update_user`  adds the full `user` object from auth.admin.updateUserById
-    // So the assertion is scoped to grant_access by design; a future
-    // "helpfully-added debugging metadata field" on this action would
-    // regress the test loudly.
+    // ----- 3. Back-compat invariant: response envelope contract -----
+    // grant_access + delete_user return `json({ ok: true })` with NO
+    // dynamic fields, so byte-identical holds for them. Other actions
+    // surface dynamic content (revoke_access's `revoked_at`,
+    // create_user's `user_id`/`email`, update_user's `user`,
+    // list_users_for_admin's `emails`) — keep this assertion scoped to
+    // grant_access by design.
     expect(nested.body, 'shape parity: byte-identical body').toBe(flat.body);
+    // Defense in depth — pin that the envelope is exactly `{ok: true}`
+    // by counting keys. If a future debugging-refactor adds the SAME key
+    // to BOTH shapes, the byte-identical check above would silently
+    // pass; this catches it loudly.
+    expect(Object.keys(nested.parsed ?? {}).length, 'envelope key count: nested must be exactly 1').toBe(1);
+    expect(Object.keys(flat.parsed   ?? {}).length, 'envelope key count: flat must be exactly 1')  .toBe(1);
 
     // ----- 4. Sanity-check helpers.ts#adminInvoke itself -----
     // Helpers hardcodes the flat shape — make sure it still returns the
