@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vite-source-tags.js
+.vercel
+
+.env
+supabase/.temp/
+
+# --- tidy pre-capture-v6 (audit fix) ---
+# .env.example was slipping through the bare .env pattern (.env -> .env only)
+.env.example
+# Root-level playwright-report/ + test-results/ (only tests/e2e/.gitignore had a pattern; doesn't cover repo root)
+playwright-report/
+test-results/
+# supabase/.temp/cli-latest was untracked despite supabase/.temp/; explicit pattern is defensive
+supabase/.temp/cli-latest
+
+# Defensive patterns added during capture-v6 idempotency work
+supabase/.branches/
+*.bak-pre-tidy
