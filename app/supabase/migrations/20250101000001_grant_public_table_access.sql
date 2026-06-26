@@ -40,8 +40,18 @@ grant select, insert, update, delete on public.camera_access to anon, authentica
 -- patchAdminProfile to row-level-security 0-row warnings (Mode B in
 -- docs/bug-diagnoses.md Bug C). Making the attribute explicit here
 -- guarantees RLS is still bypassed for service_role even if the
--- implicit grant disappears.
-alter role service_role bypassrls;
+-- implicit grant disappears. Wrapped in DO block so the migration
+-- continues even on CI images / alternate CLI versions that don't
+-- pre-create service_role yet (the role is Provisioned at container
+-- start, but the order vs migration replay is not contractual).
+do $$
+begin
+  alter role service_role bypassrls;
+exception
+  when undefined_object then
+    raise notice 'service_role not yet provisioned; BYPASSRLS unchanged';
+end
+$$;
 
 -- Future-proofing: if a later migration adds a `serial`/`bigserial`
 -- column, ALSO add this grant for sequences to avoid the same
