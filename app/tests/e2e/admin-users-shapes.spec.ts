@@ -85,6 +85,78 @@ async function cleanupTargetRow(
     .eq('user_id',   VIEWER_PROFILE_ID);
 }
 
+/**
+ * Create a disposable fixture auth.users row via service-role so the
+ * delete_user / revoke_access parse-path tests have a target id that
+ * doesn't disturb the suite's shared admin + viewer fixtures. The
+ * Date.now() + random suffix keeps parallel capture-v6 runs from
+ * colliding on the unique auth.users.email constraint; throwing out
+ * of here surfaces a real create failure rather than letting a
+ * subsequent absent-fixture assertion mask the actual root cause.
+ */
+async function createDisposableUser(
+  service: ReturnType<typeof createServiceClient>,
+  tag: string,
+): Promise<{ id: string; email: string; password: string }> {
+  const email    = `${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@omnisight.local`;
+  const password = `${tag}-${Math.random().toString(36).slice(2, 10)}!123`;
+  const { data, error } = await service.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { display_name: tag, role: 'viewer' },
+  });
+  if (error || !data?.user?.id) {
+    throw new Error(
+      `[admin-users-shapes] createDisposableUser(${tag}) failed: ` +
+      `${error?.message ?? 'no user.id returned'}`,
+    );
+  }
+  return { id: data.user.id, email, password };
+}
+
+/** Best-effort fixture teardown so a failed assertion never leaves an
+ * orphan auth.users row behind even when the assertion path exits
+ * abnormally. Returns silently; never throws. */
+async function deleteFixtureUserQuietly(
+  service: ReturnType<typeof createServiceClient>,
+  id: string | undefined,
+): Promise<void> {
+  if (!id) return;
+  try {
+    await service.auth.admin.deleteUser(id);
+  } catch (err) {
+    console.log(
+      `[admin-users-shapes] cleanup of fixture ${id} failed: ` +
+      `${(err as Error)?.message ?? err}`,
+    );
+  }
+}
+
+/** Defence-in-depth camera_access cleanup scoped to one fixture user.
+ * Same pattern as cleanupTargetRow but parameterised so the new tests
+ * don't accidentally write into the suite-wide (PRIVATE_CAM, VIEWER)
+ * row. Returns silently; never throws so the auth.users teardown that
+ * runs AFTER this in the test's finally block can still execute even
+ * if a future schema change makes this delete fail. */
+async function cleanupFixtureGrant(
+  service: ReturnType<typeof createServiceClient>,
+  fixtureUserId: string | undefined,
+  cameraId: string,
+): Promise<void> {
+  if (!fixtureUserId) return;
+  const { error } = await service
+    .from('camera_access')
+    .delete()
+    .eq('camera_id', cameraId)
+    .eq('user_id',   fixtureUserId);
+  if (error) {
+    console.log(
+      `[admin-users-shapes] cleaning camera_access(${cameraId}, ${fixtureUserId}) failed: ${error.message}`,
+    );
+  }
+}
+
 test.describe('admin-users payload-shape back-compat (b1b309d regression)', () => {
   // Serial mode: both tests share a single (camera_id, user_id) row, so we
   // must not let workers run them in parallel and double-insert (the unique
@@ -156,8 +228,12 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
     // dynamic fields, so byte-identical holds for them. Other actions
     // surface dynamic content (revoke_access's `revoked_at`,
     // create_user's `user_id`/`email`, update_user's `user`,
-    // list_users_for_admin's `emails`) — keep this assertion scoped to
-    // grant_access by design.
+    // list_users_for_admin's `emails`) — keep THIS byte-identical
+    // pattern scoped to grant_access + delete_user by design. The
+    // sibling tests below extend coverage to revoke_access with a
+    // DIFFERENT contract assertion shape that accounts for the
+    // dynamic `revoked_at` ISO timestamp — NOT byte-identical per
+    // design.
     expect(nested.body, 'shape parity: byte-identical body').toBe(flat.body);
     // Defense in depth — pin that the envelope is exactly `{ok: true}`
     // by counting keys. If a future debugging-refactor adds the SAME key
@@ -176,6 +252,200 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
     });
     expect(helper.status, 'helpers.adminInvoke: parity with raw flat status').toBe(flat.status);
     expect(helper.body,   'helpers.adminInvoke: parity with raw flat body'  ).toBe(flat.body);
+  });
+
+  /**
+   * @testId T-SHAPE-DEL
+   * @scenario positive
+   * @description delete_user parse-path parity for nested + flat request bodies
+   * @prerequisites admin JWT; service-role disposable fixture rows
+   */
+  test('parse-path parity for delete_user: nested + flat both delete fixture users with byte-identical success', async () => {
+    const env = readSupabaseEnv();
+    const anonClient = createAnonClient(env);
+    const adminToken = await signInAndGetJwt(anonClient, ADMIN_EMAIL, ADMIN_PASSWORD);
+    if (!adminToken) {
+      test.skip(true, 'SKIP_COLDSTART: admin auth unseeded -- cannot test admin-users parse path (delete_user)');
+      return;
+    }
+    const service = createServiceClient(env);
+    // Two disposable fixtures — one per shape, since the first call
+    // deletes the auth row and a SECOND call on the same row would
+    // "succeed" against a ghost id, masking a real destructure-break.
+    // Random email + password suffix avoids collisions across repeated
+    // capture-v6 runs.
+    let nestedFixture: { id: string; email: string; password: string } | undefined;
+    let flatFixture:   { id: string; email: string; password: string } | undefined;
+    try {
+      nestedFixture = await createDisposableUser(service, 'delete-shape-nested');
+      flatFixture   = await createDisposableUser(service, 'delete-shape-flat');
+
+      // ----- 1. Nested shape: {action, payload: {id}} -----
+      const nested = await invokeRaw(env.url, adminToken, {
+        action:  'delete_user',
+        payload: { id: nestedFixture.id },
+      });
+      expect(nested.status, 'nested delete_user must succeed (200)').toBe(200);
+      expect(nested.parsed?.ok, 'nested parsed.ok must be true').toBe(true);
+
+      // Verify the auth.users row is GONE — proves the destructure
+      // resolved `id` correctly, not just that the route returned ok.
+      // (NB: relies on supabase-js v2.40+ where admin.getUserById
+      // fetches directly from GoTrue, bypassing any client-side auth
+      // cache. Pre-2.40 builds may return stale post-deleteUser rows;
+      // switch to listUsers({perPage:200}) filtering for the deleted
+      // email if downgrading.)
+      expect(
+        nestedRemaining?.user?.id,
+        'nested shape: auth.users row must be deleted by admin-users delete_user',
+      ).toBeUndefined();
+
+      // ----- 2. Flat shape: {action, id} -----
+      const flat = await invokeRaw(env.url, adminToken, {
+        action: 'delete_user',
+        id:     flatFixture.id,
+      });
+      expect(flat.status, 'flat delete_user must succeed (200)').toBe(200);
+      expect(flat.parsed?.ok, 'flat parsed.ok must be true').toBe(true);
+
+      // (version-pin note: see comment above the nested.getUserById call)
+      const { data: flatRemaining } = await service.auth.admin.getUserById(flatFixture.id);
+      expect(
+        flatRemaining?.user?.id,
+        'flat shape: auth.users row must be deleted by admin-users delete_user',
+      ).toBeUndefined();
+
+      // ----- 3. Back-compat invariant: response envelope contract -----
+      // Same byte-identical + key-count pattern as grant_access —
+      // {ok:true} only, no dynamic fields. See contract comment in the
+      // grant_access test above for the full action-surface rationale.
+      expect(nested.body, 'delete_user shape parity: byte-identical body').toBe(flat.body);
+      expect(Object.keys(nested.parsed ?? {}).length, 'delete_user envelope key count: nested must be exactly 1').toBe(1);
+      expect(Object.keys(flat.parsed   ?? {}).length, 'delete_user envelope key count: flat must be exactly 1')  .toBe(1);
+    } finally {
+      await deleteFixtureUserQuietly(service, nestedFixture?.id);
+      await deleteFixtureUserQuietly(service, flatFixture?.id);
+    }
+  });
+
+  /**
+   * @testId T-SHAPE-REV
+   * @scenario positive
+   * @description revoke_access parse-path parity — envelopes match shape-by-shape,
+   *              NOT byte-identical, because `revoked_at = new Date().toISOString()`
+   *              differs across calls. Per user guidance: assert `parsed.ok === true`
+   *              + `toHaveProperty('revoked_at')` separately for both shapes; layer
+   *              timestamp-freshness + key-set parity + key-count parity on top as
+   *              defence-in-depth against future debugging-refactor drift.
+   * @prerequisites admin JWT; service-role seeded camera_access row
+   */
+  test('parse-path parity for revoke_access: nested + flat both surface ok+revoked_at; contract is shape-parallel, not byte-identical', async () => {
+    const env = readSupabaseEnv();
+    const anonClient = createAnonClient(env);
+    const adminToken = await signInAndGetJwt(anonClient, ADMIN_EMAIL, ADMIN_PASSWORD);
+    if (!adminToken) {
+      test.skip(true, 'SKIP_COLDSTART: admin auth unseeded -- cannot test admin-users parse path (revoke_access)');
+      return;
+    }
+    const service = createServiceClient(env);
+
+    // One disposable fixture user — both shapes revoke the SAME
+    // camera_access row. supabase `.delete().eq().eq()` is "remove if
+    // exists" idempotent (no error when zero rows match), so a single
+    // fixture suffices and we verify the row is gone after BOTH calls.
+    let fixture: { id: string; email: string; password: string } | undefined;
+    const fixtureCameraId = PRIVATE_CAM_ID; // re-use the suite-wide private fixture camera
+    try {
+      fixture = await createDisposableUser(service, 'revoke-shape');
+
+      // ----- 1. Seed a camera_access grant via service-role insert -----
+      // SIDESTEP admin-users grant_access so this test's surface stays
+      // orthogonal to the grant_access parse-path test above (which
+      // already locks that path down). We also don't want a regression
+      // in grant_access to mask a real revoke_access regression.
+      await service.from('camera_access').delete()
+        .eq('camera_id', fixtureCameraId)
+        .eq('user_id',   fixture.id);
+      // No `granted_by` field — mirrors tests/e2e/auth-rls.spec.ts T-RLS-4's
+      // service-role seed insert pattern. camera_access.granted_by is
+      // nullable + FK to profiles.id, but relying on auth.admin.createUser
+      // → handle_new_auth_user() trigger racing the insert order is
+      // brittle (we don't assert trigger timing here so we keep this
+      // orthogonal to the revoke_access parse path under test).
+      const { error: insErr } = await service.from('camera_access').insert({
+        camera_id: fixtureCameraId,
+        user_id:   fixture.id,
+      });
+      expect(insErr, 'fixture camera_access row must insert cleanly').toBeNull();
+
+      // ----- 2. Nested shape: {action, payload: {camera_id, user_id}} -----
+      const nested = await invokeRaw(env.url, adminToken, {
+        action:  'revoke_access',
+        payload: { camera_id: fixtureCameraId, user_id: fixture.id },
+      });
+      expect(nested.status, 'nested revoke_access must succeed (200)').toBe(200);
+
+      // ----- 3. Flat shape: {action, camera_id, user_id} -----
+      const flat = await invokeRaw(env.url, adminToken, {
+        action:    'revoke_access',
+        camera_id: fixtureCameraId,
+        user_id:   fixture.id,
+      });
+      expect(flat.status, 'flat revoke_access must succeed (200)').toBe(200);
+
+      // ----- 4. Envelope contract (NOT byte-identical — see header) ---
+      // revoke_access returns `{ok:true, revoked_at:<ISO>}` where
+      // `revoked_at = new Date().toISOString()` is regenerated per
+      // request, so two sequential calls yield different timestamps.
+      // The valuable invariant is therefore per-shape parity, not
+      // body-string-equality.
+      //   (a) ok must be true for both
+      expect(nested.parsed?.ok, 'nested parsed.ok must be true').toBe(true);
+      expect(flat.parsed?.ok,   'flat parsed.ok must be true')  .toBe(true);
+      //   (b) revoked_at must be present for both (per user guidance)
+      expect(nested.parsed, 'nested parsed must have revoked_at').toHaveProperty('revoked_at');
+      expect(flat.parsed,   'flat parsed must have revoked_at')  .toHaveProperty('revoked_at');
+      //   (c) revoked_at must be a recent ISO timestamp, not stale or hardcoded
+      const now = Date.now();
+      const nestedTs = Date.parse(String(nested.parsed?.revoked_at));
+      const flatTs   = Date.parse(String(flat.parsed?.revoked_at));
+      expect(
+        Number.isFinite(nestedTs) && Math.abs(now - nestedTs) < 30_000,
+        `nested revoked_at must be a recent ISO timestamp (got ${String(nested.parsed?.revoked_at)})`,
+      ).toBe(true);
+      expect(
+        Number.isFinite(flatTs) && Math.abs(now - flatTs) < 30_000,
+        `flat revoked_at must be a recent ISO timestamp (got ${String(flat.parsed?.revoked_at)})`,
+      ).toBe(true);
+      //   (d) key set + key count parity — defence in depth. If a future
+      //       debugging-refactor adds e.g. `{ok, revoked_at, debug_field}`
+      //       to ONE shape but not the other, the per-shape assertions
+      //       above would pass individually but this would NOT.
+      expect(
+        Object.keys(nested.parsed ?? {}).sort().join(','),
+        'revoke_access envelope key set must match across shapes',
+      ).toBe(Object.keys(flat.parsed ?? {}).sort().join(','));
+      expect(Object.keys(nested.parsed ?? {}).length, 'revoke_access envelope key count must be exactly 2 (nested)').toBe(2);
+      expect(Object.keys(flat.parsed   ?? {}).length, 'revoke_access envelope key count must be exactly 2 (flat)')  .toBe(2);
+
+      // ----- 5. DB-side verification: the camera_access row is gone -----
+      const { data: postRow } = await service
+        .from('camera_access')
+        .select('user_id, camera_id')
+        .eq('camera_id', fixtureCameraId)
+        .eq('user_id',   fixture.id)
+        .maybeSingle();
+      expect(
+        postRow,
+        'fixture camera_access row must be deleted after both revoke_access calls',
+      ).toBeNull();
+    } finally {
+      // Order matters here: delete the auth.users row FIRST so any FK
+      // cascades / future downstream-cleanup logic runs even if the
+      // camera_access row cleanup below logs+swallows an error.
+      await deleteFixtureUserQuietly(service, fixture?.id);
+      await cleanupFixtureGrant(service, fixture?.id, fixtureCameraId);
+    }
   });
 
   test('rejection-path parity: VIEWER cannot grant_access under either shape', async () => {
