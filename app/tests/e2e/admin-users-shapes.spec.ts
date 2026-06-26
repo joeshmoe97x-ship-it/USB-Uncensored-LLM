@@ -495,4 +495,83 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
     expect(flat.status,   'viewer reject must NOT be 500'         ).toBeLessThan(500);
     expect(nested.body,   'rejection parity: byte-identical body').toBe(flat.body);
   });
+
+  /**
+   * @testId T-REJ-DEL
+   * @scenario negative
+   * @description rejection-path coverage for delete_user under nested + flat
+   *              request bodies. Mirrors the grant_access rejection test
+   *              above (which this PR's first commit added). Uses a
+   *              non-existent UUID so the test surface is purely the
+   *              assertAdmin gate — no risk of accidentally deleting the
+   *              suite's seeded viewer/admin if assertAdmin ever
+   *              regressed to bypass.
+   * @prerequisites viewer JWT
+   */
+  test('rejection-path parity: VIEWER cannot delete_user under either shape', async () => {
+    // Fake UUID avoids any accidental-collision risk if assertAdmin
+    // ever regressed to accept VIEWER — there is no auth.users row
+    // at this id to delete, so the only observable signal at the
+    // route level is "rejected before body destruct".
+    const NONEXISTENT_USER_ID = '99999999-9999-9999-9999-999999999999';
+    const env = readSupabaseEnv();
+    const anonClient = createAnonClient(env);
+    const viewerToken = await signInAndGetJwt(anonClient, VIEWER_EMAIL, VIEWER_PASSWORD);
+    if (!viewerToken) {
+      test.skip(true, 'SKIP_COLDSTART: viewer auth unseeded -- rejection-path parity is environment-tolerant (delete_user)');
+      return;
+    }
+    const nested = await invokeRaw(env.url, viewerToken, {
+      action:  'delete_user',
+      payload: { id: NONEXISTENT_USER_ID },
+    });
+    const flat = await invokeRaw(env.url, viewerToken, {
+      action: 'delete_user',
+      id:     NONEXISTENT_USER_ID,
+    });
+    // assertAdmin fires before body destruct for both shapes; the
+    // 403 Forbidden envelope must be byte-identical so any future
+    // shape-dependent code path added BEFORE assertAdmin trips loudly.
+    expect(nested.status, 'viewer must be rejected on nested shape (delete_user)').toBeGreaterThanOrEqual(400);
+    expect(nested.status, 'viewer reject must NOT be 500 (delete_user)')         .toBeLessThan(500);
+    expect(flat.status,   'viewer must be rejected on flat shape (delete_user)') .toBeGreaterThanOrEqual(400);
+    expect(flat.status,   'viewer reject must NOT be 500 (delete_user)')         .toBeLessThan(500);
+    expect(nested.body,   'rejection parity: byte-identical body (delete_user)').toBe(flat.body);
+  });
+
+  /**
+   * @testId T-REJ-REV
+   * @scenario negative
+   * @description rejection-path coverage for revoke_access under nested +
+   *              flat request bodies. Uses the suite-wide camera+viewer
+   *              fixture pair so the test surface mirrors the
+   *              grant_access rejection test above.
+   * @prerequisites viewer JWT
+   */
+  test('rejection-path parity: VIEWER cannot revoke_access under either shape', async () => {
+    const env = readSupabaseEnv();
+    const anonClient = createAnonClient(env);
+    const viewerToken = await signInAndGetJwt(anonClient, VIEWER_EMAIL, VIEWER_PASSWORD);
+    if (!viewerToken) {
+      test.skip(true, 'SKIP_COLDSTART: viewer auth unseeded -- rejection-path parity is environment-tolerant (revoke_access)');
+      return;
+    }
+    const nested = await invokeRaw(env.url, viewerToken, {
+      action:  'revoke_access',
+      payload: { camera_id: PRIVATE_CAM_ID, user_id: VIEWER_PROFILE_ID },
+    });
+    const flat = await invokeRaw(env.url, viewerToken, {
+      action:    'revoke_access',
+      camera_id: PRIVATE_CAM_ID,
+      user_id:   VIEWER_PROFILE_ID,
+    });
+    // assertAdmin fires before body destruct; both shapes yield the same
+    // 403 Forbidden envelope. Byte-identical pin catches any future
+    // shape-dependent branch added BEFORE assertAdmin.
+    expect(nested.status, 'viewer must be rejected on nested shape (revoke_access)').toBeGreaterThanOrEqual(400);
+    expect(nested.status, 'viewer reject must NOT be 500 (revoke_access)')           .toBeLessThan(500);
+    expect(flat.status,   'viewer must be rejected on flat shape (revoke_access)')   .toBeGreaterThanOrEqual(400);
+    expect(flat.status,   'viewer reject must NOT be 500 (revoke_access)')           .toBeLessThan(500);
+    expect(nested.body,   'rejection parity: byte-identical body (revoke_access)')  .toBe(flat.body);
+  });
 });
