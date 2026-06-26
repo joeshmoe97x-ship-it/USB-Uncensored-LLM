@@ -1,0 +1,63 @@
+name: E2E Quick (no Supabase)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+# Cancel in-flight quick runs on PR update so the feedback loop stays sub-1-min.
+concurrency:
+  group: quick-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick:
+    name: Component-only smoke
+    # Opt-in: only runs when the PR is labeled `quick-e2e` OR the PR title
+    # starts with `[quick-e2e]` / `[quick]`. This keeps the cheap check off
+    # of PRs that will run the full Supabase-backed e2e suite anyway.
+    if: |
+      contains(github.event.pull_request.labels.*.name, 'quick-e2e') ||
+      startsWith(github.event.pull_request.title, '[quick-e2e]') ||
+      startsWith(github.event.pull_request.title, '[quick]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint workflows (actionlint)
+        uses: reviewdog/action-actionlint@v1
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache Playwright browsers (separate key from the full e2e)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-quick-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-browsers-quick-${{ runner.os }}-
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Verify Playwright chromium install
+        run: npx playwright install chromium
+
+      - name: TS check (src)
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: TS check (e2e harness)
+        run: |
+          npx tsc --noEmit --skipLibCheck \
+            --target ES2022 --module ESNext --moduleResolution bundler \
+            --jsx react-jsx --esModuleInterop --resolveJsonModule \
+            --allowSyntheticDefaultImports --baseUrl . \
+            tests/e2e/global-setup.ts tests/e2e/log-stream.ts \
+            tests/e2e/auth-rls.spec.ts playwright.config.ts
