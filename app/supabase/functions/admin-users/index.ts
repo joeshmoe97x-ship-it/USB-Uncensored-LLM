@@ -62,7 +62,13 @@ Deno.serve(async (req) => {
   if (req.method !== "POST")    return json({ error: "POST only" }, 405);
   try {
     const { adminClient, callerId } = await assertAdmin(req);
-    const { action, payload } = await req.json();
+    // Accept both payload shapes: `{action, payload: {...}}` (new contract
+    // documented in src/lib/auth.ts#AdminAction) AND `{action, ...payload}`
+    // (flat shape used by tests/e2e/helpers.ts#adminInvoke). The fallback
+    // resolves the legacy flat shape INTO `payload` so per-action destructures
+    // (`payload.camera_id` / `payload.user_id` / etc.) work in both modes.
+    const { action, payload: payloadRaw, ...rest } = await req.json();
+    const payload = payloadRaw ?? rest;
 
     if (action === "create_user") {
       const { email, password, display_name, role } = payload || {};

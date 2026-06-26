@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera as CameraType, SecurityEvent } from '../types';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import {
   Video, WifiOff, Settings, Maximize2, ShieldAlert,
   Activity, Cpu, Volume2, VolumeX, Camera as CameraIcon,
@@ -48,7 +49,23 @@ export default function CameraGrid() {
   const { push } = useToast();
 
   useEffect(() => {
+    // Initial fetch — may be empty if mounted before sign-in completes.
+    // CameraGrid lives at the App-level so it does NOT re-mount on auth
+    // change; without the onAuthStateChange re-fetch below it would render
+    // the empty anon request Response[] for an admin who signed in post-mount.
     api.getCameras().then(setCameras);
+    // Re-fetch on auth state transitions. SIGNED_IN + TOKEN_REFRESHED
+    // re-attach the user's JWT to subsequent REST calls so the cameras_select
+    // RLS USING-clause (is_admin() | has_camera_access(id) | owner_id == auth.uid())
+    // evaluates under the NEW JWT and the admin sees both cameras. SIGNED_OUT
+    // clears the grid (no leakage of the previous user's cameras).
+    const authSub = supabase.auth.onAuthStateChange((event, _session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        api.getCameras().then(setCameras);
+      } else if (event === 'SIGNED_OUT') {
+        setCameras([]);
+      }
+    });
     const interval = setInterval(() => {
       api.getEvents().then((events) => {
         const recent = events.filter(
@@ -59,7 +76,15 @@ export default function CameraGrid() {
         setActiveAlerts(map);
       });
     }, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      // supabase-js v2.45.x: onAuthStateChange returns {data: {subscription}}.
+      // Older versions: subscription on the return value directly. Both forms
+      // are guarded so the cleanup is a no-op if the API shape shifts.
+      const sub = (authSub as { data?: { subscription?: { unsubscribe?: () => void } } } | null)
+        ?.data?.subscription;
+      sub?.unsubscribe?.();
+      clearInterval(interval);
+    };
   }, []);
 
   const summary = useMemo(() => {
