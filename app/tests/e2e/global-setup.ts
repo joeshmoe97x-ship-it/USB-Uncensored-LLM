@@ -2,6 +2,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import ws from 'ws';
 
 /**
+ * Module-level admin auth constants. Shared between ensureAdminAuthRow's
+ * createUser step AND the prewarm block at the end of globalSetup() --
+ * DRY-ed here so a future ADMIN_PASSWORD rotation only needs to be made in
+ * one place. Without this hoist, a partial rotation would silently break
+ * the prewarm while letting tests pass (a "correct by accident" failure
+ * mode -- standby TODO if you ever add a parallel admin/anon user).
+ */
+const ADMIN_EMAIL    = 'admin@omnisight.local';
+const ADMIN_PASSWORD = 'admin123';
+
+/**
  * Hoisted fixture provisioning for T-RLS-1..5 (auth-rls.spec.ts).
  *
  * Cold-start responsibilities of this global setup:
@@ -75,8 +86,8 @@ async function ensureViewerAuthRow(service: SupabaseClient): Promise<void> {
  * anon-signUp path (replaced here) defaults to email_confirm: false.
  */
 async function ensureAdminAuthRow(service: SupabaseClient): Promise<void> {
-  const ADMIN_EMAIL    = 'admin@omnisight.local';
-  const ADMIN_PASSWORD = 'admin123';
+  // ADMIN_EMAIL / ADMIN_PASSWORD are module-level consts above; shared with
+  // the prewarm block at the end of globalSetup() (a single rotation point).
   // Broader regex: supabase-go emits different phrasings across versions
   // ("already registered", "already exists", "user_already_exists"
   // code, "email_already_exists" code). All are benign in our context.
@@ -194,4 +205,43 @@ export default async function globalSetup() {
 
   // 2. Viewer setup — service-role createUser (already-proven path).
   await ensureViewerAuthRow(serviceClient);
+
+  // 3. Prewarm admin-users edge function: pay its cold-start cost ONCE before
+  //    any test runs, so the first call inside admin-users-shapes.spec.ts T-RLS-3
+  //    runs against an already-warm container (DNS + TLS session + supabasejs
+  //    realtime subscription established ahead of the 60s-budget measurement).
+  //    Without this prewarm, T-RLS-3 run1 in capture-v6's pw1 phase shows a
+  //    2,441ms cold-wall spike vs 279ms warm -- variance_ratio 8.75 (logged in
+  //    app/tests/e2e/_baseline-run.json: aggregate.cold_start_tests as the
+  //    single cold_start_tests=1 entry). Best-effort: failure of the prewarm
+  //    does NOT block test execution (the spec's own SKIP_COLDSTART sentinels
+  //    handle unseeded auth environments by skipping rather than failing).
+  try {
+    const { data: pwData } = await serviceClient.auth.signInWithPassword({
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+    });
+    if (pwData?.session?.access_token) {
+      const prewarmUrl = `${url}/functions/v1/admin-users`;
+      const prewarmHeaders = {
+        Authorization: `Bearer ${pwData.session.access_token}`,
+        'Content-Type': 'application/json',
+      };
+      // list_users_for_admin is the read-only action that doesn't touch any
+      // fixture rows -- pays the edge-function container cold-start cost
+      // without dirtying subsequent test IDs.
+      const prewarmRes = await fetch(prewarmUrl, {
+        method: 'POST',
+        headers: prewarmHeaders,
+        body: JSON.stringify({ action: 'list_users_for_admin' }),
+      });
+      console.error(
+        `[globalSetup] admin-users prewarm status=${prewarmRes.status} ` +
+        `(non-fatal; cold_start_tests outlier mitigation)`,
+      );
+    }
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    console.error(`[globalSetup] admin-users prewarm failed (non-fatal): ${msg}`);
+  }
 }
