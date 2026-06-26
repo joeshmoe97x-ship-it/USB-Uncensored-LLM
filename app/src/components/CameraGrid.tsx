@@ -49,19 +49,26 @@ export default function CameraGrid() {
   const { push } = useToast();
 
   useEffect(() => {
-    // Initial fetch — may be empty if mounted before sign-in completes.
-    // CameraGrid lives at the App-level so it does NOT re-mount on auth
-    // change; without the onAuthStateChange re-fetch below it would render
-    // the empty anon request Response[] for an admin who signed in post-mount.
+    // Initial fetch — uses whichever JWT supabase-js currently has on the
+    // singleton client. If CameraGrid mounts after sign-in completed, this
+    // already carries the admin's JWT and the cameras_select RLS USING-
+    // clause (is_admin() | has_camera_access(id) | owner_id == auth.uid())
+    // returns both seeded cameras. If mounted before sign-in, the listener
+    // below re-fires SIGNED_IN to repopulate.
     api.getCameras().then(setCameras);
-    // Re-fetch on auth state transitions. SIGNED_IN + TOKEN_REFRESHED
-    // re-attach the user's JWT to subsequent REST calls so the cameras_select
-    // RLS USING-clause (is_admin() | has_camera_access(id) | owner_id == auth.uid())
-    // evaluates under the NEW JWT and the admin sees both cameras. SIGNED_OUT
-    // clears the grid (no leakage of the previous user's cameras).
-    const authSub = supabase.auth.onAuthStateChange((event, _session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        api.getCameras().then(setCameras);
+    // Re-fetch on auth state transitions. CRITICAL: `INITIAL_SESSION` fires
+    // immediately on subscription with the CURRENT auth state. CameraGrid
+    // lives behind App.tsx's `if (!profile)` gate, so the React render that
+    // mounts this component happens AFTER `supabase.auth.signInWithPassword`
+    // resolves -- meaning the user-visible SIGNED_IN event has already fired
+    // before this listener is even registered. Treating INITIAL_SESSION as
+    // a refetch trigger closes that gap, so the very first callback after
+    // subscription surfaces the post-auth cameras list.
+    // The `if (session)` guard avoids refetching on the pre-auth initial
+    // mount (which would be wasteful; the empty anon fetch already returned).
+    const authSub = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session) api.getCameras().then(setCameras);
       } else if (event === 'SIGNED_OUT') {
         setCameras([]);
       }
