@@ -31,6 +31,11 @@ test.describe('Supabase auth + RLS isolation', () => {
 
     // ------- 1. Sign in as admin -------
     await page.goto('/');
+    // Defensive: assert login form is visible BEFORE the first .fill() so a missing/never-painted
+    // element fails fast at the explicit 10s locator timeout instead of a generic 60s test timeout.
+    // Without this guard, T-RLS-11 was hanging the entire 60s Playwright global timeout waiting on
+    // a never-acted-on element (root cause still under investigation — see supabase/migrations/).
+    await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('login-email-input').fill(ADMIN_EMAIL);
     await page.getByTestId('login-password-input').fill(ADMIN_PASSWORD);
     await page.getByTestId('login-submit').click();
@@ -54,6 +59,10 @@ test.describe('Supabase auth + RLS isolation', () => {
     await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
 
     // ------- 5. Sign in as viewer -------
+    // Defensive: assert login form reappeared after app-signout click before re-filling.
+    // The 10s explicit timeout here is redundant with line 54 above but documents intent
+    // and survives any future refactor that removes the post-signout assertion.
+    await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('login-email-input').fill(VIEWER_EMAIL);
     await page.getByTestId('login-password-input').fill(VIEWER_PASSWORD);
     await page.getByTestId('login-submit').click();
