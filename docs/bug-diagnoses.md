@@ -261,7 +261,7 @@ per-row status reflecting what Playwright actually saw, per
 
 ## Bug D — `admin-users-shapes.spec.ts:317` references un-bound `nestedRemaining`
 
-**STATUS: TRIAGED, fix TBD.** Surfaced only after Bug-C cleared — before the patch landed, this test was `SKIP_COLDSTART`-skipping at `signInAndGetJwt`, never getting far enough to hit the un-bound reference. The post-Bug-C capture-v6 run is the first time this test path is reachable at full depth.
+**STATUS: RESOLVED.** Surfaced only after Bug-C cleared — before the patch landed, this test was `SKIP_COLDSTART`-skipping at `signInAndGetJwt`, never getting far enough to hit the un-bound reference. The post-Bug-C capture-v6 run is the first time this test path is reachable at full depth.
 
 **Symptom.** T-RLS-1 (the renumbered parse-path-delete test from `admin-users-shapes.spec.ts`) fails with:
 
@@ -274,14 +274,48 @@ ReferenceError: nestedRemaining is not defined
 
 The locator is the post-delete auth.users row lookup for the nested-shape fixture user. Expected to be `undefined` (admin deleted the row), but `nestedRemaining` is undefined itself (variable never bound), so the optional-chain short-circuit masks the post-delete truthiness check entirely.
 
-**Hypothesised root-cause surface.** The variable is likely bound inside a `beforeEach` scope but referenced in a `it()` block scoped one level deeper; or bound conditionally only on the previous test's outcome. Pre-existing tests in the codebase never lint-flagged this because the parse-path tests were skipped: the linter + tsc path-style check out the variable as legitimately reachable from the binding site, but only when the binding site actually executes. Once Bug-C cleared and the test path runs, the un-bound path surfaces.
+**Root cause — orphaned `getUserById` intent.** The original author drafted the `(NB: relies on supabase-js v2.40+ where admin.getUserById...)` comment ABOVE line 317 — explicitly stating they were about to verify that the nested-shape deletion actually removed the auth.users row via `service.auth.admin.getUserById(nestedFixture.id)`. The flat-shape sibling 9 lines below binds + asserts the lookup correctly:
 
-**Fix path TBD.** The next maintainer should:
-1. Read `tests/e2e/admin-users-shapes.spec.ts` lines 280–320+ in the parse-path-delete block. Find the `beforeEach` / `beforeAll` that should bind `nestedRemaining`.
-2. Either move the binding out of a conditional branch (if present), or promote it to a top-of-file constant scoped to the `describe`.
-3. Verify by reading `tests/e2e/_baseline-run.json` — T-RLS-1 should flip from FAILED → PASSED in a re-run with this fix.
+```ts
+const { data: flatRemaining } = await service.auth.admin.getUserById(flatFixture.id);
+expect(flatRemaining?.user?.id, ...).toBeUndefined();
+```
 
-**Verification signal.** Until the fix lands, the docstring for T-RLS-1 in `_baseline-run.json` will reference `nestedRemaining is not defined`. Filtering for this exact substring is the bisect-marker for confirming the fix is in place.
+But the nested-shape branch forgot the matching `const { data: nestedRemaining } = ...` line, jumping straight from the comment-only block into `expect(nestedRemaining?.user?.id, ...)`. The reference at line 317 was left dangling. There is no `beforeEach` / `beforeAll` that could have reasonably bound this name — only the comment block planned for it.
+
+**Fix (single binding insertion, mirroring the verified flat-shape pattern).** Insert exactly one line in `tests/e2e/admin-users-shapes.spec.ts` between the version-pin comment block and the `expect(...)`:
+
+```ts
+// (NB: relies on supabase-js v2.40+ where admin.getUserById ... )
+const { data: nestedRemaining } = await service.auth.admin.getUserById(nestedFixture.id);
+expect(
+  nestedRemaining?.user?.id,
+  'nested shape: auth.users row must be deleted by admin-users delete_user',
+).toBeUndefined();
+```
+
+The flat-shape comment `(version-pin note: see comment above the nested.getUserById call)` now points at a real call. Both shapes' assertions are congruent (post-delete `auth.users` row absent), which is the invariant Bug-D's test was trying to pin in the first place.
+
+**Cleanup hygiene — why nested fixture is safe to leak if `getUserById` throws.** The test's `try { ... } finally { await deleteFixtureUserQuietly(service, nestedFixture?.id); }` ensures the try-block's success or failure does not orphan the `auth.users` row. The new `getUserById` reads from a row that has already been DELETEd by the (now-resolved) `delete_user` invocation eight lines up; a `getUserById` failure here would itself signal a real regression in supabase-js / GoTrue interaction, so the failure being non-throwing is desirable — but the `finally` belt covers the case either way.
+
+**Empirical verification (capture-v6 at this commit, exit 0 elapsed 128s).** `_baseline-run.json` now reports for T-RLS-1:
+
+```
+  id:                 T-RLS-1
+  status:             passed
+  status_run1_final:  passed
+  status_run2_final:  passed
+  duration_ms:        455
+  duration_run1:      455   duration_run2: 446  (variance_ratio=1.02, variance_ok=true)
+  error_run1_final:   null
+  error_run2_final:   null
+  title:              ... / parse-path parity for delete_user: nested + flat both delete fixture users with byte-identical success
+  file:               admin-users-shapes.spec.ts:281 (shifted from 317 post-fix)
+```
+
+The bisect-marker grep `/tmp/build-log/*.log -> 'nestedRemaining is not defined'` now returns ZERO matches in this capture's worker stderr (only commit-message drafts and an older pre-fix log contain the substring). Bug-C scope (T-RLS-7/8/9/10 PASSED, `admin profile patch OK: 1 row(s)` x4 across phase F + phase G) is unchanged.
+
+**Verification signal — REVERSED (for future regressions).** Until a future regression re-introduces the same dangling reference, the docstring for T-RLS-1 in `_baseline-run.json` will report `"status": "passed"` + `"error_run1_final": null`. Filtering for `"id": "T-RLS-1"` + `"status": "passed"` is now the post-fix bisect-marker; re-emergence of the original symptom will flip it back to `"status": "failed"` + `"error_run1_final.message": "ReferenceError: nestedRemaining is not defined"`.
 
 ---
 

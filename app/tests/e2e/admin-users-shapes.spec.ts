@@ -313,6 +313,7 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
       // cache. Pre-2.40 builds may return stale post-deleteUser rows;
       // switch to listUsers({perPage:200}) filtering for the deleted
       // email if downgrading.)
+      const { data: nestedRemaining } = await service.auth.admin.getUserById(nestedFixture.id);
       expect(
         nestedRemaining?.user?.id,
         'nested shape: auth.users row must be deleted by admin-users delete_user',
