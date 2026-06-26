@@ -223,11 +223,11 @@ These two NEW failures are NOT regressions caused by Bug-C's fix — they are TE
 
 ---
 
-## Validation status (as of capture-v6 run ca2b1f9 + amended + 20250101000001_grant_public_table_access.sql)
+## Validation status (as of capture-v6 run ca2b1f9 + amended + 20250101000001_grant_public_table_access.sql) — superseded for Bug D; see **Bug D RESOLVED** section below for current state; preserved here for bisect hygiene
 
 | Test | Pre-`ca2b1f9` | Post-`ca2b1f9` | Post-grant-migration | Notes |
 |------|----------------|----------------|----------------------|-------|
-| T-RLS-1 | FAILED | FAILED | FAILED | Surfaced NEW testcode bug (`nestedRemaining is not defined` at `admin-users-shapes.spec.ts:317`) — see **Bug D** below. Not a Bug-C cascade. |
+| T-RLS-1 | FAILED | FAILED | FAILED | Surfaced testcode bug (`nestedRemaining is not defined` at `admin-users-shapes.spec.ts:317`) — see **Bug D RESOLVED** section below for current state. Not a Bug-C cascade. |
 | T-RLS-2 | PASSED | PASSED | PASSED | Viewer-reject at admin-users; exercises Bug-B parse path indirectly. |
 | T-RLS-3 | SKIPPED + 403 | SKIPPED + 403 | **PASSED** (`variance_ratio=10.2` cold-start awareness) | admin-users-shapes parse-path insert for both flat + nested shape. Bug-C's first-surface. |
 | T-RLS-7 | FAILED 403 | (403 pre-fix) | **PASSED** | admin grant_access via admin-users. The test that originally 403'd. Bug-C scope: VERIFIED. |
