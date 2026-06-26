@@ -130,7 +130,7 @@ export default function CameraGrid() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cameras.map((cam) => {
           const alert = activeAlerts[cam.id ?? ''];
-          const brand = BRAND[cam.brand];
+          const brand = BRAND[cam.brand as keyof typeof BRAND] ?? { cls: 'text-gray-300 bg-white/5 border-white/10', label: String(cam.brand ?? '').toUpperCase() };
           const stats = fakeStats(cam);
           return (
             <div
@@ -280,7 +280,7 @@ export default function CameraGrid() {
               <video src={focused.stream_url} autoPlay loop muted playsInline className="w-full h-full object-cover" />
               <div className="pointer-events-none absolute inset-0 opacity-[0.06] mix-blend-overlay bg-[repeating-linear-gradient(180deg,transparent_0_3px,white_3px_4px)]" />
               <div className="absolute top-3 left-3 text-[10px] font-mono bg-black/70 px-2 py-1 rounded text-white border border-white/10">
-                {BRAND[focused.brand].label} · {focused.id}
+                {(BRAND[focused.brand as keyof typeof BRAND] ?? { label: String(focused.brand ?? '').toUpperCase() }).label} · {focused.id}
               </div>
               <div className="absolute top-3 right-3 flex items-center gap-1.5 text-[10px] font-mono">
                 <span className="bg-red-500/20 text-red-300 border border-red-500/30 px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
