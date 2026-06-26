@@ -153,10 +153,16 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
 
     // ----- 3. The back-compat invariant: response envelope contract -----
     // Both shapes must yield byte-identical body. This is an explicit
-    // response-envelope contract (the function returns
-    // `return json({ ok: true });` on success with no dynamic fields), not
-    // just shape-parity smoke — so any future "helpfully-added debugging
-    // metadata field" on one shape regresses the test loudly.
+    // response-envelope contract for `grant_access` specifically — which
+    // returns `return json({ ok: true });` with NO dynamic fields. Other
+    // actions surface dynamic fields and would NOT satisfy this
+    // byte-identical assertion if extended to them:
+    //   - `revoke_access` adds `revoked_at: new Date().toISOString()`
+    //   - `create_user`  adds `user_id` and `email` from auth.admin.createUser
+    //   - `update_user`  adds the full `user` object from auth.admin.updateUserById
+    // So the assertion is scoped to grant_access by design; a future
+    // "helpfully-added debugging metadata field" on this action would
+    // regress the test loudly.
     expect(nested.body, 'shape parity: byte-identical body').toBe(flat.body);
 
     // ----- 4. Sanity-check helpers.ts#adminInvoke itself -----
