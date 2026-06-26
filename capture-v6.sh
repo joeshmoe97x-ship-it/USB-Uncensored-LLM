@@ -256,7 +256,17 @@ T0=$(date +%s)
 # service-role auth setup (admin-users-shapes); running them in
 # sequence within a single worker avoids cross-test beforeAll/afterAll
 # flapping on shared (PRIVATE_CAM_ID, VIEWER_PROFILE_ID) rows.
-DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
+# Specs listed below are mirrored verbatim in Phase G (run2.json) so the AND-of-both-runs
+# canonical-status check in scrub_and_build.py can match leaves by spec_meta fingerprint.
+# The leaf_key sort in scrub_and_build.py (sorted tuple of spec_anc + projectName + file +
+# line + column) places bug-e at T-RLS-12 because its filename sorts last among the three.
+# Playwright's own test-discovery order is filesystem-walk-order and is NOT what produces the
+# T-RLS-* index — the canonical ordering comes from scrub_and_build.py, not from the
+# command-line argv order above.
+# Adding `bug-e-brand-divergence.spec.ts` (the Bug E regression lock-in added in 27323db) pins
+# the BRAND/STATUS_META/SEVERITY/TYPE_META nullish-coalescing fix into every capture cycle
+# so a future regression cannot land without a CI failure.
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts tests/e2e/bug-e-brand-divergence.spec.ts --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
 PW1_EC=$?
 T1=$(date +%s)
 printf 'pw1 exit=%s elapsed=%ss\n' "$PW1_EC" "$((T1-T0))"
@@ -281,7 +291,11 @@ T0=$(date +%s)
 # Mirror Phase F: same 2 spec files + --workers=1 in same order so
 # the AND-of-both-runs canonical status in scrub_and_build.py maps
 # cleanly and cross-worker DB races are eliminated.
-DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
+# Must mirror Phase F exactly so both runs carry the bug-e regression spec to dedupe against.
+# scrub_and_build.py keys leaves by spec_meta + line + column fingerprint; mismatched phase
+# lists would cause the new spec to be recorded as `dropped_in_run1` or `dropped_in_run2`,
+# producing a partial baseline that doesn't reflect the actual regression coverage.
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts tests/e2e/bug-e-brand-divergence.spec.ts --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
 PW2_EC=$?
 T1=$(date +%s)
 printf 'pw2 exit=%s elapsed=%ss\n' "$PW2_EC" "$((T1-T0))"
