@@ -108,6 +108,8 @@ VIEWER's JWT as a smoke check that holds even when admin signin is broken.
 
 ## Bug C — admin profile.role silently sticks at 'viewer' on capture-v6 cold-start
 
+**STATUS: RESOLVED as of `0c9b5fa` (GRANT migration) + `c14f2d7` (this doc update) + `ca2b1f9+amended` (patchAdminProfile closure).** See "Empirical verification" subsection at the end of this entry for the worker-stderr grep verdict and the four tests that flipped 403/SKIPPED → PASSED. Two unrelated downstream bugs surfaced once Bug-C cleared and are tracked separately as **Bug D** (`nestedRemaining` testcode bug) and **Bug E** (Shared Cam UI locator timeout).
+
 **Symptom.** During capture-v6 verification of the new admin-users-shapes parse-path tests (T-SHAPE-DEL / T-SHAPE-REV / T-REJ-DEL / T-REJ-REV), all four cascade-skipped via `SKIP_COLDSTART:` and neighbouring auth-rls tests regressed in lockstep:
 - T-SHAPE-DEL, T-SHAPE-REV, T-REJ-DEL, T-REJ-REV all emitted `SKIP_COLDSTART: admin auth unseeded` sentinel (their `signInAndGetJwt(ADMIN)` would-be-null guard fired).
 - T-RLS-3 (`admin grant_access via the Edge Function`) returned `403 Forbidden` with body `"Forbidden: admin role required"` even though admin signin succeeded.
@@ -254,3 +256,61 @@ These two NEW failures are NOT regressions caused by Bug-C's fix — they are TE
 The captured baseline at `3d095f6` is HONEST (status: `captured` with
 per-row status reflecting what Playwright actually saw, per
 `tests/e2e/_baseline-run.json`).
+
+---
+
+## Bug D — `admin-users-shapes.spec.ts:317` references un-bound `nestedRemaining`
+
+**STATUS: TRIAGED, fix TBD.** Surfaced only after Bug-C cleared — before the patch landed, this test was `SKIP_COLDSTART`-skipping at `signInAndGetJwt`, never getting far enough to hit the un-bound reference. The post-Bug-C capture-v6 run is the first time this test path is reachable at full depth.
+
+**Symptom.** T-RLS-1 (the renumbered parse-path-delete test from `admin-users-shapes.spec.ts`) fails with:
+
+```
+ReferenceError: nestedRemaining is not defined
+
+  316 |       expect(
+> 317 |         nestedRemaining?.user?.id,
+```
+
+The locator is the post-delete auth.users row lookup for the nested-shape fixture user. Expected to be `undefined` (admin deleted the row), but `nestedRemaining` is undefined itself (variable never bound), so the optional-chain short-circuit masks the post-delete truthiness check entirely.
+
+**Hypothesised root-cause surface.** The variable is likely bound inside a `beforeEach` scope but referenced in a `it()` block scoped one level deeper; or bound conditionally only on the previous test's outcome. Pre-existing tests in the codebase never lint-flagged this because the parse-path tests were skipped: the linter + tsc path-style check out the variable as legitimately reachable from the binding site, but only when the binding site actually executes. Once Bug-C cleared and the test path runs, the un-bound path surfaces.
+
+**Fix path TBD.** The next maintainer should:
+1. Read `tests/e2e/admin-users-shapes.spec.ts` lines 280–320+ in the parse-path-delete block. Find the `beforeEach` / `beforeAll` that should bind `nestedRemaining`.
+2. Either move the binding out of a conditional branch (if present), or promote it to a top-of-file constant scoped to the `describe`.
+3. Verify by reading `tests/e2e/_baseline-run.json` — T-RLS-1 should flip from FAILED → PASSED in a re-run with this fix.
+
+**Verification signal.** Until the fix lands, the docstring for T-RLS-1 in `_baseline-run.json` will reference `nestedRemaining is not defined`. Filtering for this exact substring is the bisect-marker for confirming the fix is in place.
+
+---
+
+## Bug E — `T-RLS-11` 'Shared Cam' UI locator timeout
+
+**STATUS: TRIAGED, fix TBD.** T-RLS-11 (renumbered from `viewer cannot see admin private cameras; can see shared ones`) has been timing out across multiple capture-v6 runs — pre-Bug-C AND post-Bug-C. The pre-Bug-C failure was a downstream symptom of Bug-C (admin's RLS wasn't bypassing); the post-Bug-C failure is a distinct, separate root cause.
+
+**Symptom.** T-RLS-11 fails with:
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByTestId('camera-card').filter({ hasText: 'Shared Cam' })
+Expected: visible
+Timeout: 20000ms
+Error: element(s) not found
+```
+
+The test step at `tests/e2e/auth-rls.spec.ts:40` runs after admin signin claims to see both `SHARED_CAM` and `PRIVATE_CAM`. The grep filters the camera-card list by hasText 'Shared Cam' — zero matches in the rendered DOM.
+
+**Hypothesised root-cause surface.** Three plausible fault domains, in descending order of likelihood:
+1. `app/src/components/CameraGrid.tsx` does not render `getByTestId('camera-card')` for the SHARED_CAM row. Bug-A's fix was about attaching the JWT, not about the per-card render path. If the card component test-ids differ per-state (online/offline), a Shared Cam row in a non-online state would not match.
+2. seed.sql's Phase B.5 inserts SHARED_CAM + PRIVATE_CAM rows with `cameras.status='offline'` (the table default). Bug-A's listener fetches `/cameras` rows successfully, but the camera-card render guards on `status === 'online'`. If so, neither camera renders, but the test specifically filters by 'Shared Cam' text — the Shared Cam card title would render regardless of status. Probe next.
+3. After Bug-C's `patchAdminProfile` closure fires `service.from('profiles').update(...)`, the new admin session auth JWT may not carry the patched role synchronously. Admin signin succeeds with role='viewer' in the JWT, then trigger writes role='admin' to profiles, but the JWT-resident role stays 'viewer' until next refresh. is_admin() RLS-using clause evaluates against the seeded `profiles.role='admin'` correctly, but the JWT-resident role check on the admin's `is_admin()` call could fail. (Bug-A's listener might be needed to refresh the JWT on `onAuthStateChange`.)
+
+**Fix path TBD.** The next maintainer should:
+1. Re-run capture-v6 once with `E2E_DEBUG_DUMP=1` set and inspect admin's `getCameras()` payload. Confirm which rows actually surface and which their `status` column is.
+2. If Shared Cam appears in admin's payload but not in DOM: investigate `CameraGrid.tsx`'s per-card render path and the test-id convention.
+3. If Shared Cam does NOT appear in admin's payload: investigate why `is_admin()` RLS USING clause isn't promoting it.
+4. Verify by reading `_baseline-run.json` — T-RLS-11 should flip from FAILED → PASSED in a re-run with whichever fix lands.
+
+**Verification signal.** Until the fix lands, the docstring for T-RLS-11 will reference `'Shared Cam'` + `'camera-card'` + `Timeout: 20000ms`. Filtering for this exact substring is the bisect-marker for confirming the fix is in place.
