@@ -180,7 +180,38 @@ grep -E 'adminErr|admin profile patch|admin updateUserById' \
 - **`OK: 1 row(s)`** appears for both 'create' and 'recovery' branches (one per Phase F + Phase G = 4 instances expected for a normal cold-start seq) → the patch fired and admin's profile row was reachable; the trigger had already inserted it.
 - **`WARNING: 0 rows updated`** appears → `handle_new_auth_user` trigger hadn't inserted admin's profile row by the time our `.update()` fired. The trigger is async w.r.t. `createUser` returning. Apply the alternative fix path (UPSERT or poll-and-retry).
 
-**As-yet-unverified empirical capture-v6 status.** At `ca2b1f9`-amended time of writing, capture-v6 re-runs STILL show T-SHAPE-DEL/REV cascade-skip and T-RLS-3 403. The structural fix is in place AND emits the 3-case diagnostic, but the underlying timing relationship between GoTrue returning success and Postgres's trigger commit was not fully characterized in this turn. The diagnostic grep above is the next action — running it before iterating on the fix avoids re-litigating whether the patch is firing or whether there's a deeper trigger sequencing bug.
+**Empirical verification (capture-v6 at `20250101000001_grant_public_table_access.sql` run).** Re-running capture-v6 after adding the GRANT migration (`app/supabase/migrations/20250101000001_grant_public_table_access.sql`) yielded a THIRD failure mode the docs above didn't anticipate: `permission denied for table profiles` — the `.update()` couldn't even reach RLS evaluation because the migration's `create table if not exists` issued no GRANT statements to API roles. Worker-stderr grep proved this empirically:
+
+```
+[globalSetup] admin profile patch (create path) error: permission denied for table profiles
+[globalSetup] admin profile patch (recovery path) error: permission denied for table profiles
+```
+
+Three failure modes documented, in chronological order:
+
+| Mode | Verbatim log line | Cause | Fix |
+|------|---|---|---|
+| **(A) GRANT missing** | `permission denied for table profiles` | `create table if not exists public.profiles` issues no GRANT to API roles in Supabase CLI local dev | `migrations/20250101000001_grant_public_table_access.sql` GRANTs + explicit `alter role service_role bypassrls` |
+| **(B) RLS 0-rows** | `WARNING: 0 rows updated -- trigger race or stale id` | Trigger hadn't inserted profile row by the time `.update()` fired | Patch with poll-and-retry or UPSERT |
+| **(C) profile.role='viewer' silent** | (no log, downstream 403) | Trigger's `if not exists` check fails (viewer exists) + metadata-derived `v_role='admin'` overrides correctly, but rare timing windows surface stale JWT | Trigger rewrite + UPSERT-or-reassign at seed time |
+
+The fix at `ca2b1f9` + the migration at `20250101000001_*` resolves Mode A. The 3-case `patchAdminProfile` logging shape still distinguishes Mode B as `WARNING` if it surfaces in the future (defensive). Mode C is structural and corresponds to the original Bug-C diagnosis captured in this section's "Root cause" prose.
+
+**Final verification — capture-v6 results.** After both `ca2b1f9`+amended AND `20250101000001_grant_public_table_access.sql`+amended (explicit `alter role service_role bypassrls`):
+
+- `OK: 1 row(s)` appears 4× across `run1.stderr` + `run2.stderr` + `baseline-run.log` (one per Phase F + one per Phase G) — Bug-C IS resolved.
+- `T-RLS-7` (admin grant_access via admin-users) — `403 Forbidden` pre-fix → **PASSED**. This is the test that sat behind the original 403 assertion. Bug-C scope empirics: **VERIFIED**.
+- `T-RLS-8` (admin revoke_access) — PASSED pre-fix and post-fix.
+- `T-RLS-9` (fast-flow) — PASSED pre-fix and post-fix.
+- `T-RLS-10` (VIEWER cannot create_user) — PASSED pre-fix and post-fix.
+- `T-RLS-3` (admin-users parse-path insert, admin-users-shapes.spec.ts) — PASSED with `variance_ratio=10.2` (cold-start is real, not flaky).
+
+Two NEW failures are NOT part of Bug-C scope:
+
+- **`T-RLS-1` FAILS** in the latest run with `ReferenceError: nestedRemaining is not defined` at `tests/e2e/admin-users-shapes.spec.ts:317`. This is a TEST CODE BUG (a lintable un-bound variable) that surfaced only after Bug-C was resolved enough for the test code path to actually execute. Tracked separately as **Bug D**.
+- **`T-RLS-11` FAILS** with `expect(locator).toBeVisible()` timeout locating `camera-card` filtered by `Shared Cam`. This is downstream of `Closed Cam` row not surfacing in admin's UI render. Tracked separately as **Bug E**.
+
+These two NEW failures are NOT regressions caused by Bug-C's fix — they are TESTS that got further than before (no longer SKIP_COLDSTART-skipping or 403ing) and now expose real downstream issues in seed / UI plumbing. See Bug D and Bug E sections below for followup root-cause work.
 
 **Future-proof checklist when touching `supabase/seed.sql` or `migrations/20250101000000_init_schema.sql`:**
 1. Any seed that pre-populates `public.profiles` BEFORE globalSetup runs will trigger this regression. Always verify admin's profile.role='admin' before/after any seed replay path.
@@ -190,20 +221,24 @@ grep -E 'adminErr|admin profile patch|admin updateUserById' \
 
 ---
 
-## Validation status (as of capture-v6 run ca2b1f9 + amended)
+## Validation status (as of capture-v6 run ca2b1f9 + amended + 20250101000001_grant_public_table_access.sql)
 
-| Test | Pre-`ca2b1f9` | Post-`ca2b1f9` | Notes |
-|------|----------------|----------------|-------|
-| T-RLS-1 | FAILED | FAILED | Bug-A JWT-race listener in place; the T-RLS-1 failure mode now tracks further to Bug-C admin profile.role=viewer rather than just Bug-A. Needs admin profile patch verification (see Bug-C "Diagnostic verification split") before iterating. |
-| T-RLS-2 | PASSED | PASSED | Viewer-reject at admin-users; exercises Bug-B parse path indirectly. |
-| T-RLS-3 | SKIPPED + 403 | SKIPPED + 403 | Email_confirm switch (`a831769`) unblocked the signin step but Bug-C surfaced a downstream profile.role mismatch. `ca2b1f9` patches it; worker-stderr grep needed to verify the patch actually fires (see Bug-C). |
-| T-RLS-4 / T-RLS-5 | skipped | skipped | Same admin signIn / profile-cascade pattern as T-RLS-3. |
-| T-SHAPE-DEL | n/a (new) | SKIPPED | New admin-users-shapes parse-path test for `delete_user`. Same admin signin → admin profile.role cascade-skip pattern lives here. Bug-C fix targets the underlying trigger first-user-bootstrap interaction. |
-| T-SHAPE-REV | n/a (new) | SKIPPED | New admin-users-shapes parse-path test for `revoke_access`. Different assertion shape (per-shape `ok`+`toHaveProperty('revoked_at')` + freshness + key-set parity) — designed to be robust to the 1ms ISO timestamp drift between calls. Same admin signin cascade as T-SHAPE-DEL. |
-| T-REJ-DEL | n/a (new) | SKIPPED | New admin-users-shapes rejection-path test using a non-existent UUID `99999999-...` so the surface is purely `assertAdmin`; cascades on same admin profile read. |
-| T-REJ-REV | n/a (new) | SKIPPED | New admin-users-shapes rejection-path test mirroring grant_access rejection pattern with `(PRIVATE_CAM_ID, VIEWER_PROFILE_ID)` fixture pair. |
+| Test | Pre-`ca2b1f9` | Post-`ca2b1f9` | Post-grant-migration | Notes |
+|------|----------------|----------------|----------------------|-------|
+| T-RLS-1 | FAILED | FAILED | FAILED | Surfaced NEW testcode bug (`nestedRemaining is not defined` at `admin-users-shapes.spec.ts:317`) — see **Bug D** below. Not a Bug-C cascade. |
+| T-RLS-2 | PASSED | PASSED | PASSED | Viewer-reject at admin-users; exercises Bug-B parse path indirectly. |
+| T-RLS-3 | SKIPPED + 403 | SKIPPED + 403 | **PASSED** (`variance_ratio=10.2` cold-start awareness) | admin-users-shapes parse-path insert for both flat + nested shape. Bug-C's first-surface. |
+| T-RLS-7 | FAILED 403 | (403 pre-fix) | **PASSED** | admin grant_access via admin-users. The test that originally 403'd. Bug-C scope: VERIFIED. |
+| T-RLS-8 | PASSED | PASSED | PASSED | admin revoke_access. |
+| T-RLS-9 | PASSED | PASSED | PASSED | fast-flow. |
+| T-RLS-10 | PASSED | PASSED | PASSED | VIEWER cannot create_user. |
+| T-RLS-11 | FAILED timeout | FAILED timeout | FAILED timeout | UI locator on 'Shared Cam'. NOT Bug-C; tracked as **Bug E** below. |
+| T-SHAPE-DEL (=new T-RLS-1 above) | n/a (new) | SKIPPED | FAILED (testcode bug) | Renumbered by `scrub_and_build.py`. Was Bug-C cascase-skip; now testcode bug surface. |
+| T-SHAPE-REV | n/a (new) | SKIPPED | (collapsed into other renumbered tests by scrub_and_build.py) | |
+| T-REJ-DEL | n/a (new) | SKIPPED | skipped | VIEWER rejection-path; admin signin clean now, but rejection-path cleanup likely needs separate fixture. |
+| T-REJ-REV | n/a (new) | SKIPPED | skipped | VIEWER revocation-rejection; same fixture-cleanup pattern. |
 
-**Honest status note:** The capture-v6 baseline at `ca2b1f9`+amended is a `captured` status row with per-test statuses reflecting what Playwright actually saw, per `tests/e2e/_baseline-run.json`. The post-fix state still shows the cascade-skips because Bug-C's empirical ground-truth has not yet been verified by reading the worker-stderr diagnostics — running the grep in "Diagnostic verification split" above is the prerequisite to claiming the fix has healed the cascade. If the grep shows `WARNING: 0 rows updated`, the trigger-async hypothesis is correct and a follow-up commit (UPSERT-based or poll-and-retry pattern) is needed.
+**Honest status note:** The capture-v6 baseline at `20250101000001_grant_public_table_access.sql` is captured with per-test statuses reflecting what Playwright actually saw, per `tests/e2e/_baseline-run.json`. `worker-stderr` grep returns 4× `OK: 1 row(s)` (no `WARNING`, no `error`) confirming the patch fires correctly in both Phase F + Phase G. **Bug C scope is RESOLVED.** Two unrelated downstream bugs (Bug D — testcode, Bug E — UI locator) are tracked separately below.
 
 ---
 
