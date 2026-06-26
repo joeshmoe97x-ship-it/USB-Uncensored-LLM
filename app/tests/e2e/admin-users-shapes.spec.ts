@@ -1,50 +1,55 @@
 /**
- * Regression test: locks in the admin-users payload back-compat destructure
- * introduced at b1b309d. Before the back-compat, the function did
+ * Regression test for the admin-users payload back-compat destructure at b1b309d.
+ *
+ * Before b1b309d the function did:
  *   const { action, payload } = await req.json();
- * and only the canonical `{action, payload: {...}}` shape worked. The
- * helpers.ts#adminInvoke-style flat shape `{action, ...payload}` extracted
- * `payload` as `undefined` and the per-action destructures (`camera_id`,
- * `user_id`, etc.) silently dropped, yielding HTTP 400
- * "camera_id + user_id required" — the exact bug surfaced by `bug B` in
- * the captured baseline.
+ * and only the canonical `{action, payload: {...}}` shape worked. The flat
+ * shape `{action, ...payload}` extracted `payload = undefined` and the
+ * per-action destructures (`camera_id`, `user_id`) silently missed,
+ * yielding HTTP 400 "camera_id + user_id required".
  *
- * After the back-compat, BOTH shapes yield the same FORBIDDEN outcome
- * because the action-handler destructure `const payload = payloadRaw ?? rest`
- * surfaces the same shape regardless of how the caller spreads. This test
- * pins the contract:
- *   nested shape -> 401/403 "Forbidden: admin role required"
- *   flat shape   -> 401/403 "Forbidden: admin role required"
+ * After b1b309d the function does:
+ *   const { action, payload: payloadRaw, ...rest } = await req.json();
+ *   const payload = payloadRaw ?? rest;
+ * and both shapes are equivalent at parse time.
  *
- * We use VIEWER's JWT (not admin's) precisely so we test the parse path
- * BEFORE the action handler runs. Once `assertAdmin` rejects as VIEWER,
- * the function never reaches the per-action payload destructures — so the
- * negative-shared-error pattern between the two shapes is the strictest
- * invariant available without requiring a working admin signIn (which a
- * separate investigation tracks).
+ * This test pins the invariant by actually exercising the parse path with
+ * ADMIN's JWT (instead of VIEWER's — assertAdmin fires BEFORE the body
+ * destruct for non-admin callers, so a prior VIEWER-only variant of this
+ * test could only lock in the rejection path, not the parse-side contract).
  *
  * Source of truth: app/supabase/functions/admin-users/index.ts lines
  *   const { action, payload: payloadRaw, ...rest } = await req.json();
  *   const payload = payloadRaw ?? rest;
+ * preceded by `await assertAdmin(req);`.
+ *
+ * Cold-start tolerance: when `signInAndGetJwt(ADMIN)` returns null (a
+ * known capture-v6 cold-start issue tracked separately), this test MUST
+ * skip with a `SKIP_COLDSTART:` sentinel so capture-v6.scrub_and_build.py
+ * can distinguish "admin signIn cold-start bug" from "real test failure."
  */
 
 import { test, expect } from '@playwright/test';
 import {
   readSupabaseEnv,
   createAnonClient,
+  createServiceClient,
   signInAndGetJwt,
   adminInvoke,
 } from './helpers';
 
-const ADMIN_EMAIL     = 'admin@omnisight.local';
-const ADMIN_PASSWORD  = 'admin123';
-const VIEWER_EMAIL    = 'viewer@omnisight.local';
-const VIEWER_PASSWORD = 'viewer1234!';
+const ADMIN_EMAIL        = 'admin@omnisight.local';
+const ADMIN_PASSWORD     = 'admin123';
+const VIEWER_EMAIL       = 'viewer@omnisight.local';
+const VIEWER_PASSWORD    = 'viewer1234!';
+// Seed.sql hardcoded IDs — see app/supabase/seed.sql.
+const PRIVATE_CAM_ID     = '11111111-1111-1111-1111-111111111111';
+const VIEWER_PROFILE_ID  = '33333333-3333-3333-3333-333333333333';
 
 /**
  * Direct call to admin-users where the caller controls the EXACT JSON body
- * shape. Unlike helpers.ts#adminInvoke (which hardcodes the flat-spread
- * `{action, ...payload}` shape), this tests each shape independently.
+ * shape. helpers.ts#adminInvoke hardcodes the flat-spread shape, so it
+ * cannot be used to test the nested shape; we hit the endpoint directly.
  */
 async function invokeRaw(
   url: string,
@@ -65,94 +70,123 @@ async function invokeRaw(
   return { status: res.status, body: text, parsed };
 }
 
+/** Idempotent row cleanup using service-role (bypasses any RLS). */
+async function cleanupTargetRow(env: ReturnType<typeof readSupabaseEnv>) {
+  const service = createServiceClient(env);
+  await service
+    .from('camera_access')
+    .delete()
+    .eq('camera_id', PRIVATE_CAM_ID)
+    .eq('user_id',   VIEWER_PROFILE_ID);
+}
+
 test.describe('admin-users payload-shape back-compat (b1b309d regression)', () => {
-  test('both payload shapes yield the same FORBIDDEN outcome with VIEWER jwt', async ({ page }, testInfo) => {
+  // Serial mode: both tests share a single (camera_id, user_id) row, so we
+  // must not let workers run them in parallel and double-insert (the unique
+  // constraint would mask the second run's success with a duplicate-key
+  // error, breaking the byte-identical body invariant).
+  test.describe.configure({ mode: 'serial' });
+
+  // Cleanup before + after — defense-in-depth so the test never leaves
+  // a stray camera_access row in the DB, even on crash.
+  test.beforeAll(async () => { await cleanupTargetRow(readSupabaseEnv()); });
+  test.afterAll(async () =>  { await cleanupTargetRow(readSupabaseEnv()); });
+
+  test('parse-path parity: nested + flat shapes both insert with byte-identical success', async () => {
     const env = readSupabaseEnv();
     const anonClient = createAnonClient(env);
-
-    // VIEWER must sign in successfully for this regression to fire. If the
-    // viewer auth row is missing (cold-start failure path), skip cleanly so a
-    // pre-existing environment-setup bug doesn't mask the back-compat signal.
-    const token = await signInAndGetJwt(anonClient, VIEWER_EMAIL, VIEWER_PASSWORD);
-    expect(token, 'viewer sign-in must succeed for this regression').toBeTruthy();
-
-    // ---- Shape A: nested {action, payload: {...}} (canonical, src/lib/auth.ts#invokeAdmin) ----
-    const nested = await invokeRaw(env.url, token!, {
-      action: 'grant_access',
-      payload: {
-        camera_id: '11111111-1111-1111-1111-111111111111',
-        user_id:   '33333333-3333-3333-3333-333333333333',
-      },
-    });
-
-    // ---- Shape B: flat {action, ...payload} (helpers.ts#adminInvoke convention) ----
-    const flat = await invokeRaw(env.url, token!, {
-      action:    'grant_access',
-      camera_id: '11111111-1111-1111-1111-111111111111',
-      user_id:   '33333333-3333-3333-3333-333333333333',
-    });
-
-    // The bug (pre-b1b309d) surfaced as HTTP 400 "camera_id + user_id required"
-    // for the flat shape, because the function destructured `payload` as undefined
-    // and the action handler then errored. With the back-compat in place, BOTH
-    // shapes are accepted by the parse layer and reach `assertAdmin`, which
-    // rejects with "Forbidden: admin role required" + 401/403.
-    //
-    // Pinned invariant: nested.shape errors === flat.shape errors.
-    expect(nested.status, 'nested: must be 401/403 (assertAdmin)').toBeGreaterThanOrEqual(400);
-    expect(nested.status, 'nested: must NOT be 400').toBeLessThan(500);
-    expect(
-      nested.parsed?.error === 'Forbidden: admin role required' || /forbidden|unauthorized/i.test(nested.body),
-      `nested shape: expected Forbidden, got status=${nested.status} body=${nested.body}`,
-    ).toBe(true);
-
-    expect(flat.status, 'flat: must be 401/403 (assertAdmin)').toBeGreaterThanOrEqual(400);
-    expect(flat.status, 'flat: must NOT be 400').toBeLessThan(500);
-    expect(
-      flat.parsed?.error === 'Forbidden: admin role required' || /forbidden|unauthorized/i.test(flat.body),
-      `flat shape: expected Forbidden, got status=${flat.status} body=${flat.body}`,
-    ).toBe(true);
-
-    // Hardest invariant: the two errors must be IDENTICAL responses. If
-    // shapes diverge at any future refactor, this assertion breaks loudly.
-    expect(nested.status, 'shape parity: identical HTTP status').toBe(flat.status);
-    expect(nested.body,   'shape parity: identical body payload').toBe(flat.body);
-
-    // Also confirm helpers.ts#adminInvoke itself still works (it uses flat shape).
-    // This catches ABI drift if someone "simplifies" adminInvoke back into a
-    // nested-shape-only call site.
-    const helper = await adminInvoke(env, token!, 'grant_access', {
-      camera_id: '11111111-1111-1111-1111-111111111111',
-      user_id:   '33333333-3333-3333-3333-333333333333',
-    });
-    expect(helper.status, 'helpers.adminInvoke (flat) parity with raw flat').toBe(flat.status);
-    expect(helper.body,   'helpers.adminInvoke (flat) parity with raw flat body').toBe(flat.body);
-  });
-
-  test('unknown action is rejected identically under both shapes', async ({ page }, testInfo) => {
-    const env = readSupabaseEnv();
-    const anonClient = createAnonClient(env);
-
-    const token = await signInAndGetJwt(anonClient, VIEWER_EMAIL, VIEWER_PASSWORD);
-    if (!token) {
-      // Cold-start skip is OK here; the test is environment-tolerant.
-      test.skip(true, 'viewer not seeded — back-compat parity block needs cold-start');
+    const adminToken = await signInAndGetJwt(anonClient, ADMIN_EMAIL, ADMIN_PASSWORD);
+    if (!adminToken) {
+      // Sentinel prefix `SKIP_COLDSTART:` so capture-v6.scrub_and_build.py
+      // can flag this distinctly from a real test failure (the admin
+      // signIn cold-start is tracked as a separate bug).
+      test.skip(true, 'SKIP_COLDSTART: admin auth unseeded -- cannot test admin-users parse path');
       return;
     }
 
-    // assertAdmin fires first for both shapes, so we expect identical
-    // 401/403 Forbidden regardless of action name. The point of this
-    // second test is to confirm `action` is parsed correctly in BOTH
-    // shapes (otherwise the "Unknown action" branch could fire under one
-    // shape and not the other, masking a parse-shape asymmetry).
-    const nestedUnknown = await invokeRaw(env.url, token!, {
-      action:   'unknown_action_under_nested',
-      payload:  { foo: 'bar' },
+    // ----- 1. Nested shape: {action, payload: {...}} (canonical, src/lib/auth.ts#invokeAdmin) -----
+    await cleanupTargetRow(env);
+    const nested = await invokeRaw(env.url, adminToken, {
+      action:  'grant_access',
+      payload: { camera_id: PRIVATE_CAM_ID, user_id: VIEWER_PROFILE_ID },
     });
-    const flatUnknown = await invokeRaw(env.url, token!, {
-      action:   'unknown_action_under_flat',
-      foo:      'bar',
+    expect(nested.status, 'nested grant_access must succeed (200)').toBe(200);
+    expect(nested.parsed?.ok, 'nested parsed.ok must be true').toBe(true);
+
+    // Verify nested actually inserted the row (proves the destructure
+    // resolved camera_id + user_id correctly, not that the route ran).
+    const service = createServiceClient(env);
+    const { data: nestedRow } = await service
+      .from('camera_access')
+      .select('user_id, camera_id')
+      .eq('camera_id', PRIVATE_CAM_ID)
+      .eq('user_id',   VIEWER_PROFILE_ID)
+      .maybeSingle();
+    expect(nestedRow, 'nested shape: camera_access row must be inserted').toBeTruthy();
+
+    // ----- 2. Flat shape: {action, ...payload} (helpers.ts#adminInvoke convention) -----
+    await cleanupTargetRow(env);
+    const flat = await invokeRaw(env.url, adminToken, {
+      action:    'grant_access',
+      camera_id: PRIVATE_CAM_ID,
+      user_id:   VIEWER_PROFILE_ID,
     });
-    expect(nestedUnknown.body, 'unknown-action parity: nested').toBe(flatUnknown.body);
+    expect(flat.status, 'flat grant_access must succeed (200)').toBe(200);
+    expect(flat.parsed?.ok, 'flat parsed.ok must be true').toBe(true);
+
+    const { data: flatRow } = await service
+      .from('camera_access')
+      .select('user_id, camera_id')
+      .eq('camera_id', PRIVATE_CAM_ID)
+      .eq('user_id',   VIEWER_PROFILE_ID)
+      .maybeSingle();
+    expect(flatRow, 'flat shape: camera_access row must be inserted').toBeTruthy();
+
+    // ----- 3. The back-compat invariant -----
+    // The function returns a strict contract envelope on success; both
+    // shapes MUST yield byte-identical bodies. A future refactor that
+    // re-introduces a parse-side asymmetry trips this assertion loudly.
+    expect(nested.body, 'shape parity: byte-identical body').toBe(flat.body);
+
+    // ----- 4. Sanity-check helpers.ts#adminInvoke itself -----
+    // Helpers hardcodes the flat shape — make sure it still returns the
+    // same shape as our raw flat invocation (catches ABI drift).
+    await cleanupTargetRow(env);
+    const helper = await adminInvoke(env, adminToken, 'grant_access', {
+      camera_id: PRIVATE_CAM_ID,
+      user_id:   VIEWER_PROFILE_ID,
+    });
+    expect(helper.status, 'helpers.adminInvoke: parity with raw flat status').toBe(flat.status);
+    expect(helper.body,   'helpers.adminInvoke: parity with raw flat body'  ).toBe(flat.body);
+  });
+
+  test('rejection-path parity: VIEWER cannot grant_access under either shape', async () => {
+    const env = readSupabaseEnv();
+    const anonClient = createAnonClient(env);
+    const viewerToken = await signInAndGetJwt(anonClient, VIEWER_EMAIL, VIEWER_PASSWORD);
+    if (!viewerToken) {
+      // Cold-start skip is OK here — this is a smoke test for the assertion
+      // gate; it doesn't gate any downstream test the way the admin parse-path
+      // test does.
+      test.skip(true, 'SKIP_COLDSTART: viewer auth unseeded -- rejection-path parity is environment-tolerant');
+      return;
+    }
+    const nested = await invokeRaw(env.url, viewerToken, {
+      action:  'grant_access',
+      payload: { camera_id: PRIVATE_CAM_ID, user_id: VIEWER_PROFILE_ID },
+    });
+    const flat = await invokeRaw(env.url, viewerToken, {
+      action:    'grant_access',
+      camera_id: PRIVATE_CAM_ID,
+      user_id:   VIEWER_PROFILE_ID,
+    });
+    // assertAdmin fires before body destruct; both shapes yield the same
+    // 401/403 Forbidden. Pin the byte-identical contract so any future
+    // shape-dependent branch added BEFORE assertAdmin trips loudly.
+    expect(nested.status, 'viewer must be rejected on nested shape').toBeGreaterThanOrEqual(400);
+    expect(nested.status, 'viewer reject must NOT be 500').toBeLessThan(500);
+    expect(flat.status,   'viewer must be rejected on flat shape'  ).toBeGreaterThanOrEqual(400);
+    expect(flat.status,   'viewer reject must NOT be 500'         ).toBeLessThan(500);
+    expect(nested.body,   'rejection parity: byte-identical body').toBe(flat.body);
   });
 });

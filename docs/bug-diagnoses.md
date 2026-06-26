@@ -85,11 +85,22 @@ destructure works unchanged. This makes the function contract
 "both shapes are equivalent at parse time" — a stable invariant that
 new callers can rely on without coordinating on a single shape.
 
-**Regression lock-in.** `tests/e2e/admin-users-shapes.spec.ts` exercises
-the function with both shapes in turn (nested + flat) and asserts the
-two responses are **byte-identical** down to status code and body. Any
-future refactor that re-introduces a parse-side asymmetry will trip
-this assertion loudly.
+**Regression lock-in.** `tests/e2e/admin-users-shapes.spec.ts`
+authenticates as **admin** (NOT viewer — `assertAdmin` fires before the
+body destruct so a viewer-only test could only lock in the rejection
+path) and invokes `grant_access` sequentially with both nested and flat
+shapes. Between calls the camera_access row is cleaned up via the
+service-role so each shape reaches the action handler's INSERT path
+independently. Both shapes are verified to: (a) return HTTP 200 with
+`parsed.ok === true`, (b) actually insert the `(camera_id, user_id)` row
+in the DB (proves the destructure resolved both keys, not just that the
+route ran), and (c) yield byte-identical response bodies. When
+`signInAndGetJwt(ADMIN)` returns null (the cold-start bug tracked
+separately) the test skips with a `SKIP_COLDSTART: admin auth unseeded`
+sentinel so `capture-v6/scrub_and_build.py` can flag it as an
+environment issue rather than masquerade as a test pass. A second test
+(`rejection-path parity`) confirms the byte-identical contract under
+VIEWER's JWT as a smoke check that holds even when admin signin is broken.
 
 ---
 
@@ -99,7 +110,7 @@ this assertion loudly.
 |------|---------|----------|-------|
 | T-RLS-1 | FAILED (admin 0 cameras) | FAILED | Bug-A JWT-race listener is in place; T-RLS-1 currently still fails — separate investigation tracks admin-user provisioning at capture-v6 cold-start (seed.sql row ordering). |
 | T-RLS-2 | PASSED | PASSED | Viewer-reject at admin-users; exercises Bug-B parse path indirectly. |
-| T-RLS-3 | SKIPPED (admin signIn null) | SKIPPED | `aggregate.all_passed_in_both_runs = false` because of T-RLS-1 failure and T-RLS-3..5 cascade-skip. Bug-B destructure is at least confirmed passing for VIEWER by `admin-users-shapes.spec.ts` (separate test file). |
+| T-RLS-3 | SKIPPED (admin signIn null) | SKIPPED | `aggregate.all_passed_in_both_runs = false` because of T-RLS-1 failure and T-RLS-3..5 cascade-skip. The new `admin-users-shapes.spec.ts` regression test exercises the Bug-B parse-path with admin JWT (sequential nested + flat shape) and asserts both yield byte-identical success bodies + DB row insertion; it skips with `SKIP_COLDSTART:` until admin signIn works at cold-start. |
 | T-RLS-4 / T-RLS-5 | skipped | skipped | Same admin signIn skip; cascades from T-RLS-3. |
 
 The captured baseline at `3d095f6` is HONEST (status: `captured` with
