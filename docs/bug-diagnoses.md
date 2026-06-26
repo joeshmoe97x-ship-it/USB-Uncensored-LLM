@@ -353,7 +353,7 @@ That finding **narrows** but does not conclude: it shows no JS-thrown exception 
 - **Auth-JWT / RLS check** (hypothesis 3): does the patched admin profile actually carry through to the RLS `is_admin()` USING clause for the in-flight request?
 
 **Fix path TBD.** The next maintainer should:
-1. Run a direct API probe — sign in as `admin@omnisight.local`, call `supabase.from('cameras').select('*')`, log the full row set to stderr with row-count + each row's `(id, name, status, owner_id)`. If the Shared Cam row surfaces with status='online', hypothesis 1 (UI render) is the root cause; if it does NOT surface, hypothesis 3 (RLS not promoting) is the root cause.
+1. ~~Run a direct API probe~~ **(spec-committed at d530e63; execution TBD)** — sign in as `admin@omnisight.local`, call `supabase.from('cameras').select('*')`, log the full row set to stderr with row-count + each row's `(id, name, status, owner_id)`. The probe spec lives in `app/tests/e2e/bug-e-api-probe.spec.ts`; future maintainers only need to run it and read the `[bug-e-api-probe.*]` stderr for a verdict of `API_EMPTY|API_PARTIAL|API_FULL`. If the Shared Cam row surfaces with status='online', hypothesis 1 (UI render) is the root cause; if it does NOT surface, hypothesis 3 (RLS not promoting) is the root cause.
 2. Cross-check the API-probe payload against the React render path in `CameraGrid.tsx` to find why the `data-testid='camera-card'` div isn't emitted even when the row is present.
 3. Verify by reading `_baseline-run.json` — T-RLS-11 should flip from FAILED → PASSED in a re-run with whichever fix lands.
 
