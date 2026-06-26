@@ -22,34 +22,51 @@
 -- synthesize. See docs/bug-diagnoses.md Bug C for the full diagnosis
 -- trail and the 3-way failure-mode log reading.
 
--- Schema-level: any postgrest query requires schema USAGE first.
-grant usage on schema public to anon, authenticated, service_role;
-
--- Table-level. service_role gets full CRUD (used by global-setup.ts's
--- patchAdminProfile closure and by supabase-js admin writes). anon and
--- authenticated get the same surface area but are still constrained by
--- the RLS USING / WITH CHECK clauses declared in init_schema.sql, so
--- the effective privilege set is unchanged for them.
-grant select, insert, update, delete on public.profiles       to anon, authenticated, service_role;
-grant select, insert, update, delete on public.cameras       to anon, authenticated, service_role;
-grant select, insert, update, delete on public.camera_access to anon, authenticated, service_role;
-
--- Defense-in-depth: service_role BYPASSRLS is currently implicit in
--- Supabase Cloud + CLI local dev defaults, but is not part of any SQL
--- contract -- a CLI downgrade or platform reset would silently revert
--- patchAdminProfile to row-level-security 0-row warnings (Mode B in
--- docs/bug-diagnoses.md Bug C). Making the attribute explicit here
--- guarantees RLS is still bypassed for service_role even if the
--- implicit grant disappears. Wrapped in DO block so the migration
--- continues even on CI images / alternate CLI versions that don't
--- pre-create service_role yet (the role is Provisioned at container
--- start, but the order vs migration replay is not contractual).
+-- All 4 GRANTs + the alter-role statement consolidated into a single
+-- per-role DO block so partial-success semantics hold on alt-CLI / CI
+-- paths where some of `anon`, `authenticated`, or `service_role` may not
+-- yet exist (SQLSTATE 42704 undefined_object) OR where the migration
+-- runner is not superuser (SQLSTATE 42501 insufficient_privilege for
+-- alter role). On standard Supabase CLI local dev all 3 roles are
+-- pre-provisioned and the runner is the `postgres` superuser so every
+-- loop iteration succeeds; alt-CLI / CI paths receive per-role NOTICEs
+-- but the migration does NOT abort. The earlier `0c9b5fa` commit's
+-- bare GRANT statements would HARD-FAIL on alt-CLI / CI paths per the
+-- code-reviewer note (concern #1 followup).
+--
+-- The 3 tables (profiles, cameras, camera_access) are batched into a
+-- single per-role grant because they were unconditionally created by
+-- init_schema.sql -- the missing-role failure mode is caught by the
+-- per-role EXCEPTION block, so we don't need a per-table loop.
 do $$
+declare
+  r text;
 begin
-  alter role service_role bypassrls;
-exception
-  when undefined_object then
-    raise notice 'service_role not yet provisioned; BYPASSRLS unchanged';
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    begin
+      -- Schema-level USAGE (required for any postgrest query).
+      execute format('grant usage on schema public to %I', r);
+      -- Table-level CRUD on the 3 init_schema-defined tables.
+      execute format(
+        'grant select, insert, update, delete on public.profiles, public.cameras, public.camera_access to %I',
+        r
+      );
+    exception
+      when undefined_object or insufficient_privilege then
+        raise notice 'Grants skipped for %: %', r, sqlerrm;
+    end;
+  end loop;
+
+  -- Defense-in-depth: explicit BYPASSRLS on service_role so the
+  -- patchAdminProfile closure in global-setup.ts survives any future
+  -- CLI version where the implicit BYPASSRLS attribute is removed
+  -- (Mode B in docs/bug-diagnoses.md Bug C).
+  begin
+    alter role service_role bypassrls;
+  exception
+    when undefined_object or insufficient_privilege then
+      raise notice 'service_role BYPASSRLS unchanged: %', sqlerrm;
+  end;
 end
 $$;
 
