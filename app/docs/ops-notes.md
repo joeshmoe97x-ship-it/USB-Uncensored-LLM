@@ -346,6 +346,36 @@ Open a separate, deliberate PR that adds the `[analytics] enabled = false` and `
 Once that PR lands + merges, the deferred `tests/e2e/_baseline-run.json` stub (per `ba05f73`) can be replaced by a real capture.
 
 
+## Capture-test triage cheat-sheet
+
+This is the **forward-going** index for the failure modes that next maintainers will most often hit when triaging capture-v6 output. It complements [`Capture Attempt Log`](#capture-attempt-log) below (which is historical/archaeological) and points at `app/docs/bug-diagnoses.md` for the full diagnosis prose.
+
+### Sentinel-based triage ladder
+
+When grepping capture-v6 stderr for a known sentinel, walk the table top-to-bottom. The first match wins.
+
+| Sentinel (verbatim grep hit) | Where it lives | Where the full diagnosis + fix is |
+|------------------------------|----------------|------------------------------------|
+| `SKIP_COLDSTART: admin auth unseeded` | `tests/e2e/admin-users-shapes.spec.ts` + `auth-rls.spec.ts` cascade | [`docs/bug-diagnoses.md → Bug C`](../bug-diagnoses.md#bug-c--admin-profilerole-silently-sticks-at-viewer-on-capture-v6-cold-start) — admin profile.role silently sticks at 'viewer' (root cause + 3 documented failure modes + fix at `ca2b1f9+amended` + `0c9b5fa`) |
+| `Forbidden: admin role required` | `supabase/functions/admin-users/index.ts` `assertAdmin` | Same as above — Bug C’s downstream surface |
+| `nestedRemaining is not defined` | `tests/e2e/admin-users-shapes.spec.ts:317` | [`docs/bug-diagnoses.md → Bug D`](../bug-diagnoses.md#bug-d--admin-users-shapesspects317-references-un-bound-nestedremaining) — testcode variable scoping |
+| `Shared Cam` `camera-card` `Timeout: 20000ms` | `tests/e2e/auth-rls.spec.ts:40` (`T-RLS-11`) | [`docs/bug-diagnoses.md → Bug E`](../bug-diagnoses.md#bug-e--t-rls-11-shared-cam-ui-locator-timeout) — UI locator timeout (3 fault domains, fix TBD) |
+| `permission denied for table profiles` | `tests/e2e/global-setup.ts` `patchAdminProfile` | Bug C Mode (A) — fixed by `migrations/20250101000001_grant_public_table_access.sql` (`0c9b5fa` + amended). Sentinel appears only if the GRANT migration is reverted. |
+| `WARNING: 0 rows updated -- trigger race or stale id` | `tests/e2e/global-setup.ts` `patchAdminProfile` | Bug C Mode (B) — trigger-fire timing race. Patch defends via the 3-case logging shape; fix path TBD (UPSERT or poll-and-retry). |
+| `Node.js 20 detected without native WebSocket support` | first Node-side `createClient(...)` call site | [`Node 20 + Supabase realtime ws workaround`](#node-20--supabase-realtime-ws-workaround) below — `ws` shim via `transport: ws` |
+| `FATAL: vite not ready (exit 34)` after IPv6 bind | `capture-v6.sh` Phase E readiness gate | [`Capture Attempt Log`](#capture-attempt-log) attempt-6 entry — fixed by commit `9594e27` (`vite --host 127.0.0.1`) |
+| `Stopping containers...` never prints + 5-line trace | early PHASE A on this host | [`Capture Attempt Log`](#capture-attempt-log) attempt-9 entry + [`External-kill source triage`](#external-kill-source-triage) below — external-kill over `capture-v6.sh`’s EXIT trap |
+
+### Reading worker stderr (the gotcha)
+
+capture-v6.sh redirects the parent bash script's stdout/stderr to `/tmp/build-log/path-a-capture-v6.log`, but **Playwright spawns child worker processes** that inherit + redirect to per-run logs. Playwright-side `console.error(...)` (e.g. globalSetup's `[globalSetup] adminErr=…` / `admin profile patch …` lines) lands in:
+
+- `/tmp/build-log/run1.stderr` (Phase F cold)
+- `/tmp/build-log/run2.stderr` (Phase G warm)
+- `/tmp/build-log/baseline-run.log` (merged tail of both)
+
+**NOT** in `path-a-capture-v6.log`. Grep the `run{1,2}.stderr` + `baseline-run.log` triplet when triaging globalSetup-level sentinels (Bug C above is the canonical example).
+
 ## Capture Attempt Log
 
 A structured archeology appendix complementing the machine-readable `deferred.attempts[]` array in `tests/e2e/_baseline-run.json` (which is the canonical source of truth for the nine cumulative capture attempts). This appendix preserves the **verbatim error patterns** that would otherwise require re-running the pipeline to reproduce.
