@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Fail pre-commit if /tmp/test*_body.ts staging mirrors exist.
+# Staging mirrors invite drift between /tmp/ draft copies and the live
+# camaras/tests/e2e/<spec>.ts; once the same content lands in the spec
+# (md5-verified or equivalent), the staging copy must be deleted in the
+# same commit.
+set -euo pipefail
+
+LEAKS=$(find /tmp -maxdepth 3 -type f -name 'test*_body.ts' ! -path '*/node_modules/*' 2>/dev/null || true)
+if [ -n "${LEAKS:-}" ]; then
+  echo "pre-commit: stale /tmp/test*_body.ts staging mirror(s) detected:" >&2
+  printf '%s\n' "$LEAKS" >&2
+  echo "Delete them (after verifying md5 match against the live spec) before committing." >&2
+  exit 1
+fi
+
+exit 0
