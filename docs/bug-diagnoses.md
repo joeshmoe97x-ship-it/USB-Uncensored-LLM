@@ -94,11 +94,13 @@ service-role so each shape reaches the action handler's INSERT path
 independently. Both shapes are verified to: (a) return HTTP 200 with
 `parsed.ok === true`, (b) actually insert the `(camera_id, user_id)` row
 in the DB (proves the destructure resolved both keys, not just that the
-route ran), and (c) yield byte-identical response bodies. When
-`signInAndGetJwt(ADMIN)` returns null (the cold-start bug tracked
+route ran), and (c) yield byte-identical response bodies.When `signInAndGetJwt(ADMIN)` returns null (the cold-start bug tracked
 separately) the test skips with a `SKIP_COLDSTART: admin auth unseeded`
-sentinel so `capture-v6/scrub_and_build.py` can flag it as an
-environment issue rather than masquerade as a test pass. A second test
+sentinel. The prefix is **visually grep-able in run logs / Playwright
+JSON reporter output**; it is NOT load-bearing for tooling because
+scrub_and_build.py already differentiates skip from pass/fail at the
+Playwright schema level (`status: "skipped"`). Treat the prefix as
+informational, not contract. A second test
 (`rejection-path parity`) confirms the byte-identical contract under
 VIEWER's JWT as a smoke check that holds even when admin signin is broken.
 

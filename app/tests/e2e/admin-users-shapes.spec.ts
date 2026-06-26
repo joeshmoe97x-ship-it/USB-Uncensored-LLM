@@ -70,10 +70,15 @@ async function invokeRaw(
   return { status: res.status, body: text, parsed };
 }
 
-/** Idempotent row cleanup using service-role (bypasses any RLS). */
-async function cleanupTargetRow(env: ReturnType<typeof readSupabaseEnv>) {
-  const service = createServiceClient(env);
-  await service
+/** Idempotent row cleanup using service-role (bypasses any RLS). Accepts
+ * an optional pre-allocated service client so callers that already have
+ * one don't have to instantiate it again. */
+async function cleanupTargetRow(
+  env: ReturnType<typeof readSupabaseEnv>,
+  service?: ReturnType<typeof createServiceClient>,
+) {
+  const svc = service ?? createServiceClient(env);
+  await svc
     .from('camera_access')
     .delete()
     .eq('camera_id', PRIVATE_CAM_ID)
@@ -97,15 +102,20 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
     const anonClient = createAnonClient(env);
     const adminToken = await signInAndGetJwt(anonClient, ADMIN_EMAIL, ADMIN_PASSWORD);
     if (!adminToken) {
-      // Sentinel prefix `SKIP_COLDSTART:` so capture-v6.scrub_and_build.py
-      // can flag this distinctly from a real test failure (the admin
-      // signIn cold-start is tracked as a separate bug).
+      // Sentinel prefix `SKIP_COLDSTART:` is visually grep-able in run
+      // logs / Playwright JSON reporter output. Note that scrub_and_build
+      // already differentiates skip from fail at the schema level
+      // (Playwright emits `status: 'skipped'`), so the prefix is
+      // informational rather than load-bearing for tooling.
       test.skip(true, 'SKIP_COLDSTART: admin auth unseeded -- cannot test admin-users parse path');
       return;
     }
+    // Lift env + service once so the per-shape callsites don't repeat
+    // readSupabaseEnv()/createServiceClient() four times each.
+    const service = createServiceClient(env);
 
     // ----- 1. Nested shape: {action, payload: {...}} (canonical, src/lib/auth.ts#invokeAdmin) -----
-    await cleanupTargetRow(env);
+    await cleanupTargetRow(env, service);
     const nested = await invokeRaw(env.url, adminToken, {
       action:  'grant_access',
       payload: { camera_id: PRIVATE_CAM_ID, user_id: VIEWER_PROFILE_ID },
@@ -115,7 +125,6 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
 
     // Verify nested actually inserted the row (proves the destructure
     // resolved camera_id + user_id correctly, not that the route ran).
-    const service = createServiceClient(env);
     const { data: nestedRow } = await service
       .from('camera_access')
       .select('user_id, camera_id')
@@ -125,7 +134,7 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
     expect(nestedRow, 'nested shape: camera_access row must be inserted').toBeTruthy();
 
     // ----- 2. Flat shape: {action, ...payload} (helpers.ts#adminInvoke convention) -----
-    await cleanupTargetRow(env);
+    await cleanupTargetRow(env, service);
     const flat = await invokeRaw(env.url, adminToken, {
       action:    'grant_access',
       camera_id: PRIVATE_CAM_ID,
@@ -142,16 +151,18 @@ test.describe('admin-users payload-shape back-compat (b1b309d regression)', () =
       .maybeSingle();
     expect(flatRow, 'flat shape: camera_access row must be inserted').toBeTruthy();
 
-    // ----- 3. The back-compat invariant -----
-    // The function returns a strict contract envelope on success; both
-    // shapes MUST yield byte-identical bodies. A future refactor that
-    // re-introduces a parse-side asymmetry trips this assertion loudly.
+    // ----- 3. The back-compat invariant: response envelope contract -----
+    // Both shapes must yield byte-identical body. This is an explicit
+    // response-envelope contract (the function returns
+    // `return json({ ok: true });` on success with no dynamic fields), not
+    // just shape-parity smoke — so any future "helpfully-added debugging
+    // metadata field" on one shape regresses the test loudly.
     expect(nested.body, 'shape parity: byte-identical body').toBe(flat.body);
 
     // ----- 4. Sanity-check helpers.ts#adminInvoke itself -----
     // Helpers hardcodes the flat shape — make sure it still returns the
     // same shape as our raw flat invocation (catches ABI drift).
-    await cleanupTargetRow(env);
+    await cleanupTargetRow(env, service);
     const helper = await adminInvoke(env, adminToken, 'grant_access', {
       camera_id: PRIVATE_CAM_ID,
       user_id:   VIEWER_PROFILE_ID,
