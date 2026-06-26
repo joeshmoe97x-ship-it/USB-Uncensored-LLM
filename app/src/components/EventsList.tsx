@@ -133,13 +133,13 @@ export default function EventsList() {
                       <div className="text-[10px] text-gray-500">{formatTimeAgo(evt.timestamp)}</div>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={'inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ' + SEVERITY[evt.severity].cls}>
-                        {SEVERITY[evt.severity].label}
+                      <span className={'inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ' + (SEVERITY[evt.severity] ?? { cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30', label: String(evt.severity).toUpperCase() }).cls}>
+                        {(SEVERITY[evt.severity] ?? { cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30', label: String(evt.severity).toUpperCase() }).label}
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-500">{TYPE_ICONS[evt.type]}</span>
+                        <span className="text-gray-500">{TYPE_ICONS[evt.type] ?? <AlertTriangle className="w-3.5 h-3.5" />}</span>
                         <span className="capitalize">{evt.type.replace(/_/g, ' ')}</span>
                       </span>
                     </td>
@@ -178,8 +178,8 @@ export default function EventsList() {
             <Field
               label="Severity"
               value={
-                <span className={'px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ' + SEVERITY[open.severity].cls}>
-                  {SEVERITY[open.severity].label}
+                <span className={'px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ' + (SEVERITY[open.severity] ?? { cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30', label: String(open.severity).toUpperCase() }).cls}>
+                  {(SEVERITY[open.severity] ?? { cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30', label: String(open.severity).toUpperCase() }).label}
                 </span>
               }
             />

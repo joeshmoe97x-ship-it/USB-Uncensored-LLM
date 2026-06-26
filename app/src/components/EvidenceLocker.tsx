@@ -161,7 +161,7 @@ export default function EvidenceLocker() {
       <DetailModal
         open={!!open}
         onClose={() => setOpen(null)}
-        title={open ? TYPE_META[open.type].label : '' ?? ""}
+        title={open ? (TYPE_META[open.type] ?? TYPE_META.log_bundle).label : '' ?? ""}
         subtitle={open?.id ?? ""}
       >
         {open && (
@@ -170,7 +170,7 @@ export default function EvidenceLocker() {
             <Field label="Captured" value={formatTimestamp(open.timestamp)} primary />
             <Field
               label="Status"
-              value={<span className={'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ' + STATUS_META[open.status].cls}>{STATUS_META[open.status].label}</span>}
+              value={<span className={'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ' + (STATUS_META[open.status] ?? STATUS_META.ready).cls}>{(STATUS_META[open.status] ?? STATUS_META.ready).label}</span>}
               primary
             />
             <div className="grid grid-cols-3 gap-2">

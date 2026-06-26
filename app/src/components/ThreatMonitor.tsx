@@ -60,7 +60,7 @@ export default function ThreatMonitor() {
 
       <div className="grid grid-cols-1 gap-3">
         {threats.map((threat) => {
-          const meta = TYPE_META[threat.type];
+          const meta = TYPE_META[threat.type as keyof typeof TYPE_META] ?? { label: String(threat.type ?? 'Unknown').toUpperCase(), cls: 'border-gray-500/30 bg-gray-500/10 text-gray-300', Icon: ShieldAlert };
           const Icon = meta.Icon;
           const isBlocked = blocked.has(threat.signal_info?.target_mac ?? threat.target_mac);
           const isAck = acked.has(threat.id);
