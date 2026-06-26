@@ -78,11 +78,12 @@ export default function CameraGrid() {
     }, 1000);
     return () => {
       // supabase-js v2.45.x: onAuthStateChange returns {data: {subscription}}.
-      // Older versions: subscription on the return value directly. Both forms
-      // are guarded so the cleanup is a no-op if the API shape shifts.
-      const sub = (authSub as { data?: { subscription?: { unsubscribe?: () => void } } } | null)
-        ?.data?.subscription;
-      sub?.unsubscribe?.();
+      // unsubscribe is always defined on the v2 subscription, so the trailing
+      // `?.()` is redundant; cleaned up to just `authSub?.data?.subscription?.unsubscribe()`.
+      // The optional chain on `data`/`subscription` is retained so older
+      // shimmed versions that return `{subscription}` directly still no-op
+      // cleanly rather than throw on `.data` of undefined.
+      authSub?.data?.subscription?.unsubscribe();
       clearInterval(interval);
     };
   }, []);
