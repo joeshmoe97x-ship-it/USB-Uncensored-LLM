@@ -249,7 +249,14 @@ printf '  vite bind lines: %s\n' "${VITE_BIND_LINES:-NO_BIND_LINE_FOUND}"
 print_phase 'F: playwright run 1 (cold)'
 cd "$PROJECT_DIR"
 T0=$(date +%s)
-DEBUG=pw:api "$PLAYWRIGHT" test tests/e2e/auth-rls.spec.ts --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
+# Run auth-rls.spec.ts AND admin-users-shapes.spec.ts together so the
+# admin-users parse-path + rejection-path regressions land in
+# tests/e2e/_baseline-run.json. Both files are illustrative e2e
+# suites that share admin@omnisight.local's JWT (admin-rls) and the
+# service-role auth setup (admin-users-shapes); running them in
+# sequence within a single worker avoids cross-test beforeAll/afterAll
+# flapping on shared (PRIVATE_CAM_ID, VIEWER_PROFILE_ID) rows.
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
 PW1_EC=$?
 T1=$(date +%s)
 printf 'pw1 exit=%s elapsed=%ss\n' "$PW1_EC" "$((T1-T0))"
@@ -271,7 +278,10 @@ fi
 print_phase 'G: playwright run 2 (warm)'
 cd "$PROJECT_DIR"
 T0=$(date +%s)
-DEBUG=pw:api "$PLAYWRIGHT" test tests/e2e/auth-rls.spec.ts --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
+# Mirror Phase F: same 2 spec files + --workers=1 in same order so
+# the AND-of-both-runs canonical status in scrub_and_build.py maps
+# cleanly and cross-worker DB races are eliminated.
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
 PW2_EC=$?
 T1=$(date +%s)
 printf 'pw2 exit=%s elapsed=%ss\n' "$PW2_EC" "$((T1-T0))"
