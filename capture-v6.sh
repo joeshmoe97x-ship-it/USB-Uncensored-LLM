@@ -178,6 +178,18 @@ RESOLVED_LINE=$(grep -v '^$' /tmp/build-log/localhost-resolved.txt | head -1)
 printf 'localhost resolves to: %s\n' "${RESOLVED_LINE:-UNRESOLVED}"
 printf 'exports OK\n'
 
+print_phase 'E0: npm install (idempotent; pulls playwright + react deps)'
+cd "$PROJECT_DIR"
+npm install --no-fund --no-audit 2>&1 | tail -20
+NPM_EC=${PIPESTATUS[0]}
+if [ "$NPM_EC" != "0" ]; then printf 'FATAL: npm install failed (exit %s)\n' "$NPM_EC"; exit 36; fi
+printf 'npm install OK\n'
+# playwright browser cache check (best-effort, idempotent)
+[ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls $HOME/.cache/ms-playwright 2>/dev/null)" ] || {
+  printf 'playwright browsers not cached -- npx playwright install chromium (best-effort)\n'
+  npx playwright install chromium 2>&1 | tail -10 || printf 'WARN: playwright install incomplete (continuing)\n'
+}
+
 print_phase 'E: Vite background + readiness'
 rm -f /tmp/build-log/vite-dev.log
 cd "$PROJECT_DIR"
