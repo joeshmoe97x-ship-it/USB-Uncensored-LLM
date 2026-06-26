@@ -1,4 +1,4 @@
-PROJECT_DIR=/home/bgdaddy/Downloads/camaras
+PROJECT_DIR=$HOME/USB-Uncensored-LLM/Linux/app
 OPS="$PROJECT_DIR/docs/ops-notes.md"
 LOG=/tmp/build-log/final-archeology-drift-audit.log
 

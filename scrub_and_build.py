@@ -14,10 +14,143 @@ Per-row output (REWRITTEN -- direction-agnostic, AND-of-both-runs canonical stat
   variance_ratio              = max(c1,c2) / max(min(c1,c2), 1)
   variance_ok                 = abs(c1,c2) <= max(40% of larger, 1000ms)
   status                      = AND of run1-final + run2-final (canonical consistency)
+  -- granularity (added so root-cause surfaces inline rather than only in
+     test-results/{authentication}/trace.zip):
+  error_run1_final            = {message, snippet, location_file, location_line, location_column} | null
+  error_run2_final            = same shape as error_run1_final | null
+  skipped_reason_run1         = annotations[type=skip].description (first match) | null
+  skipped_reason_run2         = same | null
+  Both error_* and skipped_reason_* are scrubbed via scrub_string every pass to
+  prevent sb_secret_* / JWT / API_URL leakage; messages are ANSI-stripped,
+  truncated to ERR_MAX_LEN chars per field, and only emitted when present.
 """
 import json, os, re, sys
 from pathlib import Path
 from datetime import datetime, timezone
+
+
+# Granular error-capture knobs. Match the old capture philosophy (small, gate-able
+# JSON) while keeping enough context to debug a future regression without booting
+# into playwright-report/. ERR_MAX_LEN tunes per-field truncation so the committed
+# baseline JSON stays compact even on full-stack error messages (which can be
+# 1KB+ once Playwright decorates with retry paths).
+ERR_MAX_LEN = 600
+ANSI_RE = re.compile(r'\u001b\[[0-9;]*[A-Za-z]')  # suppress Playwright's color codes
+
+
+def _strip_ansi(s):
+    return ANSI_RE.sub('', s) if isinstance(s, str) else s
+
+
+def _scrub_and_clip(s):
+    """Truncate first, then scrub. Returns None on falsy input.
+
+    Ordering rationale: the truncation marker had to live AFTER scrub in v1 so
+    the JWT regex wouldn't accidentally match the marker text. Truncating FIRST
+    + dropping the marker entirely is cleaner: no marker can introduce a fake
+    `[REDACTED]` substring, and the JSON finalization (which still scrubs the
+    whole output once) is idempotent on already-scrubbed strings.
+
+    Forward reference: scrub_string is defined IMMEDIATELY ABOVE this helper
+    (top of file, before any caller runs). _scrub_and_clip intentionally does
+    NOT use a `'scrub_string' in globals()` runtime check: that pattern is
+    fail-open (proceeding without scrub if the binding is missing) which is the
+    wrong default for a secret-leak path. Without the check, NameError surfaces
+    immediately if scrub_string is unbound -- a preferable fail-fast vs. silent
+    bypass. (An earlier draft of this comment claimed records.append runs after
+    scrub_string was bound at module-load time; that claim was wrong because
+    records.append is at module level -- it executes BEFORE scrub_string's def
+    is reached during source-order traversal. scrub_string has been moved to
+    the top of this file accordingly.)
+    """
+    if not s:
+        return None
+    s = _strip_ansi(s)
+    if len(s) > ERR_MAX_LEN:
+        s = s[:ERR_MAX_LEN]  # hard cap; no marker (avoids eyJ-shape ambiguity)
+    return scrub_string(s)
+
+
+def _extract_error(attempt):
+    """Return {message, snippet, location_file, location_line, location_column} | None.
+
+    Reads Playwright attempt.error (or first attempt.errors[] entry as a fallback).
+    Returns None when no usable error data is present (passed/skipped attempts).
+    """
+    if not isinstance(attempt, dict):
+        return None
+    err = attempt.get('error')
+    if not isinstance(err, dict):
+        # Fallback path for tests where Playwright omitted `error` but populated `errors[]`.
+        err_list = attempt.get('errors') or []
+        if err_list and isinstance(err_list[0], dict):
+            err = err_list[0]
+        else:
+            return None
+    msg = err.get('message') or ''
+    if not msg:
+        return None
+    loc = err.get('location') or attempt.get('errorLocation') or {}
+    return {
+        'message':         _scrub_and_clip(msg),
+        'snippet':         _scrub_and_clip(err.get('snippet')),
+        'location_file':   loc.get('file'),
+        'location_line':   loc.get('line'),
+        'location_column': loc.get('column'),
+    }
+
+
+def _extract_skip_reason(attempt):
+    """Return LAST annotations[type=skip].description (string, scrubbed+clipped) | None.
+
+    Playwright may emit BOTH a `test.skip(true, 'X')` annotation AND an
+    in-test `test.info().annotations.push({type:'skip', description:'Y'})`
+    annotation. When multiple skip annotations exist, the LAST one wins --
+    in-test annotations (added during test execution) typically appear AFTER
+    the module-level test.skip() call in Playwright's reporter ordering, and
+    authors intend the pushed reason to be the canonical reason surfaced to
+    readers of the baseline JSON.
+    """
+    if not isinstance(attempt, dict):
+        return None
+    last = None
+    for ann in (attempt.get('annotations') or []):
+        if isinstance(ann, dict) and ann.get('type') == 'skip' and ann.get('description'):
+            last = _scrub_and_clip(ann['description'])
+    return last
+
+
+# --- scrub_string IS DEFINED HERE (top of file, above any caller). ----------
+# This must live BEFORE the records.append loop runs because the loop calls
+# `_extract_error` / `_extract_skip_reason` -> `_scrub_and_clip` -> scrub_string.
+# Module-level code executes in source order during `python3 scrub_and_build.py`,
+# so if scrub_string's `def` is anywhere LATER than the loop's run-time location,
+# a NameError fires when the loop runs. Earlier draft had scrub_string near
+# `out = scrub_string(out)` at the bottom of the file -- that ordering was wrong.
+#
+# The function body uses ANON_KEY/SR_KEY/API_URL, which are populated from
+# sb-status.json BELOW this point. That is OK because scrub_string's body only
+# EXECUTES at call-time (records.append), by which point those globals are bound.
+# Bound-at-def-time is NOT the issue; bound-at-call-time is what matters.
+def scrub_string(s):
+    """Apply scrub transforms to a single string; returns the scrubbed string.
+
+    Idempotent: repeated application produces the same output. Called LAST in
+    the error-capture helpers (after ANSI strip + truncate), so the truncation
+    text (if any) cannot accidentally match a scrub regex.
+    """
+    out_s = s
+    if ANON_KEY and ANON_KEY in out_s:
+        out_s = out_s.replace(ANON_KEY, '[REDACTED]')
+    if SR_KEY and SR_KEY in out_s:
+        out_s = out_s.replace(SR_KEY, '[REDACTED]')
+    if API_URL and API_URL in out_s and not API_URL.startswith('http://127.0.0.1'):
+        out_s = out_s.replace(API_URL, '[REDACTED]')
+    out_s, _ = re.subn(r'sb_secret_[A-Za-z0-9_-]+', '[REDACTED]', out_s)
+    out_s, _ = re.subn(r'eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*', '[REDACTED]', out_s)
+    return out_s
+
+
 
 CAM = Path(os.environ['CAMARAS'])
 BL = Path('/tmp/build-log')
@@ -201,6 +334,10 @@ for key in common:
         'duration_run2_first_ms': int(run2_first_ms),
         'variance_ratio':         variance_ratio,
         'variance_ok':            variance_ok,
+        'error_run1_final':       _extract_error(leaves1[-1][1]),
+        'error_run2_final':       _extract_error(leaves2[-1][1]),
+        'skipped_reason_run1':    _extract_skip_reason(leaves1[-1][1]),
+        'skipped_reason_run2':    _extract_skip_reason(leaves2[-1][1]),
     })
 
 
@@ -234,6 +371,30 @@ dropped_run2_records = [make_dropped_record(k, 'run2', g2[k], i) for i, k in enu
 print(f'records: {len(records)} | total_ms(canonical-median)={sum(r["duration_ms"] for r in records)} '
       f'| total_ms(run1-first)={sum(r["duration_run1_first_ms"] for r in records)} '
       f'| total_ms(run2-first)={sum(r["duration_run2_first_ms"] for r in records)}', file=sys.stderr)
+
+
+def _unwind_test_record(r, idx):
+    """Project the records.append() row into the public tests[] envelope.
+
+    Carries over EVERY key from the record dict (so newly added fields like
+    error_run{1,2}_final + skipped_reason_run{1,2} flow into _baseline-run.json
+    automatically -- no risk of the tests[] builder silently dropping a future
+    field). Container fields (test_key, spec_meta, test_meta) are popped; their
+    leaf values are flattened into single-key output (file, line, column, project).
+    dict(r) is used instead of **r because **r would expose spec_meta / test_meta
+    container dicts as JSON sub-objects -- we want a flat test-row shape.
+    """
+    env = dict(r)
+    env['id']      = f'T-RLS-{idx}'
+    env['project'] = r['test_meta'].get('projectName')
+    env['file']    = r['spec_meta'].get('file')
+    env['line']    = r['spec_meta'].get('line')
+    env['column']  = r['spec_meta'].get('column')
+    env.pop('test_key',  None)
+    env.pop('spec_meta', None)
+    env.pop('test_meta', None)
+    return env
+
 
 new = {
     'status':      'captured',
@@ -290,25 +451,7 @@ new = {
         'run2': errors_run2,
     },
     'tests': [
-        {
-            'id':                       f'T-RLS-{i+1}',
-            'title':                    r['title'],
-            'ancestry':                 r['ancestry'],
-            'project':                  r['test_meta'].get('projectName'),
-            'file':                     r['spec_meta'].get('file'),
-            'line':                     r['spec_meta'].get('line'),
-            'column':                   r['spec_meta'].get('column'),
-            'attempts_run1':            r['attempts_run1'],
-            'attempts_run2':            r['attempts_run2'],
-            'status':                   r['status'],
-            'status_run1_final':        r['status_run1_final'],
-            'status_run2_final':        r['status_run2_final'],
-            'duration_ms':              r['duration_ms'],
-            'duration_run1_first_ms':   r['duration_run1_first_ms'],
-            'duration_run2_first_ms':   r['duration_run2_first_ms'],
-            'variance_ratio':           r['variance_ratio'],
-            'variance_ok':              r['variance_ok'],
-        }
+        _unwind_test_record(r, idx=i+1)
         for i, r in enumerate(records)
     ],
     'dropped_in_run1': dropped_run1_records,
@@ -318,18 +461,13 @@ new = {
 out = json.dumps(new, indent=2, sort_keys=True) + '\n'
 
 
-def scrub_string(s):
-    """Apply scrub transforms to a single string; returns the scrubbed string."""
-    out_s = s
-    if ANON_KEY and ANON_KEY in out_s:
-        out_s = out_s.replace(ANON_KEY, '[REDACTED]')
-    if SR_KEY and SR_KEY in out_s:
-        out_s = out_s.replace(SR_KEY, '[REDACTED]')
-    if API_URL and API_URL in out_s and not API_URL.startswith('http://127.0.0.1'):
-        out_s = out_s.replace(API_URL, '[REDACTED]')
-    out_s, _ = re.subn(r'sb_secret_[A-Za-z0-9_-]+', '[REDACTED]', out_s)
-    out_s, _ = re.subn(r'eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*', '[REDACTED]', out_s)
-    return out_s
+# scrub_string is defined at the TOP of this file (above _scrub_and_clip) so the
+# records.append() loop can safely call `_scrub_and_clip` -> scrub_string
+# during module-load source-order traversal. There is intentionally NO second
+# `def scrub_string` here. An earlier edit cycle left a duplicate which silently
+# overrode the top-of-file binding via Python's last-def-wins; the canonical,
+# single source of truth now lives near the top of this file alongside the
+# error-extraction helpers.
 
 
 # Defensive per-error scrub for runner_errors (in case raw error text contains a token)

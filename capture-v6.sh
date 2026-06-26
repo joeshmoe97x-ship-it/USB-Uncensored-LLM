@@ -10,7 +10,7 @@ mkdir -p /tmp/build-log
 exec >"$LOG" 2>&1
 
 # Path-safe: bash-side path variables only
-PROJECT_DIR="$HOME/Downloads/camaras"
+PROJECT_DIR="$HOME/USB-Uncensored-LLM/Linux/app"
 export CAMARAS="$PROJECT_DIR"
 STUB_REL="tests/e2e/_baseline-run.json"
 STUB="$PROJECT_DIR/$STUB_REL"
@@ -145,6 +145,10 @@ export VITE_SUPABASE_ANON_KEY="$ANON_KEY"
 export SUPABASE_URL="$API_URL"
 export SUPABASE_ANON_KEY="$ANON_KEY"
 export SUPABASE_SERVICE_ROLE_KEY="$SR_KEY"
+# Gate the v3 diagnostic instrumentation blocks in tests/e2e/global-setup.ts and
+# tests/e2e/auth-rls.spec.ts T-RLS-1. With E2E_DEBUG_DUMP unset, blocks
+# short-circuit to no-op; capture-v6 sets this so dumps fire only during verification.
+export E2E_DEBUG_DUMP=1
 # E2E_BASE_URL aligns Playwright's baseURL (playwright.config.ts: `E2E_BASE_URL ?? http://localhost:5173`)
 # with whatever interface the dev server is actually bound to. The camaras package.json runs
 # `vite --host 127.0.0.1` (IPv4-only); this Linux box has `::1 localhost` in /etc/hosts, so
@@ -314,7 +318,7 @@ fi
 print_phase 'K: shape preview of new stub'
 python3 - <<'PYEOF'
 import json
-d = json.loads(open('/home/bgdaddy/Downloads/camaras/tests/e2e/_baseline-run.json').read())
+d = json.loads(open(os.environ['PROJECT_DIR'] + '/tests/e2e/_baseline-run.json').read())
 print('status:', d.get('status'))
 print('captured_at:', d.get('captured_at'))
 print('aggregate:', json.dumps(d.get('aggregate'), indent=2))
