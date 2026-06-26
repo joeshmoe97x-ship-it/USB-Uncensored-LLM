@@ -182,7 +182,7 @@ print_phase 'E0: npm install (idempotent; pulls playwright + react deps)'
 cd "$PROJECT_DIR"
 npm install --no-fund --no-audit 2>&1 | tail -20
 NPM_EC=${PIPESTATUS[0]}
-if [ "$NPM_EC" != "0" ]; then printf 'FATAL: npm install failed (exit %s)\n' "$NPM_EC"; exit 36; fi
+if [ "$NPM_EC" != "0" ]; then printf 'FATAL: npm install failed (exit %s)\n' "$NPM_EC"; exit 39; fi
 printf 'npm install OK\n'
 # playwright browser cache check (best-effort, idempotent)
 [ -d "$HOME/.cache/ms-playwright" ] && [ -n "$(ls $HOME/.cache/ms-playwright 2>/dev/null)" ] || {
