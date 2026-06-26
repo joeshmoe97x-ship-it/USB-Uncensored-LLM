@@ -72,17 +72,35 @@ async function invokeRaw(
 
 /** Idempotent row cleanup using service-role (bypasses any RLS). Accepts
  * an optional pre-allocated service client so callers that already have
- * one don't have to instantiate it again. */
+ * one don't have to instantiate it again. NEVER throws — logs and
+ * returns silently on both `{error}` (RLS denial / FK cascade / SQL
+ * failure) and Promise rejection (network / GoTrue timeout) so a
+ * future schema-change failure can't crash sibling test ordering
+ * inside the suite's test.beforeAll/afterAll. Matches the
+ * log+swallow parity of the new per-test fixture helpers below. */
 async function cleanupTargetRow(
   env: ReturnType<typeof readSupabaseEnv>,
   service?: ReturnType<typeof createServiceClient>,
-) {
+): Promise<void> {
   const svc = service ?? createServiceClient(env);
-  await svc
-    .from('camera_access')
-    .delete()
-    .eq('camera_id', PRIVATE_CAM_ID)
-    .eq('user_id',   VIEWER_PROFILE_ID);
+  try {
+    const { error } = await svc
+      .from('camera_access')
+      .delete()
+      .eq('camera_id', PRIVATE_CAM_ID)
+      .eq('user_id',   VIEWER_PROFILE_ID);
+    if (error) {
+      console.log(
+        `[admin-users-shapes] cleanupTargetRow(${PRIVATE_CAM_ID}, ${VIEWER_PROFILE_ID}) ` +
+        `returned error: ${error.message}`,
+      );
+    }
+  } catch (err) {
+    console.log(
+      `[admin-users-shapes] cleanupTargetRow(${PRIVATE_CAM_ID}, ${VIEWER_PROFILE_ID}) ` +
+      `threw: ${(err as Error)?.message ?? err}`,
+    );
+  }
 }
 
 /**
