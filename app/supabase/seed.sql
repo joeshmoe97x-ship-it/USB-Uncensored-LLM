@@ -8,7 +8,37 @@ VALUES
    NULL, 'West Wing'),
   ('22222222-2222-2222-2222-222222222222',
    'Shared Cam',        '10.0.0.11', 'Hikvision DS-2CD', 'online',
-   NULL, 'East Wing')
+   NULL, 'East Wing'),
+  -- 9 additional demo cameras covering assorted SMB/SOHO brands — all
+  -- owner_id=NULL so admin sees them via is_admin(); viewer-only access
+  -- would require an explicit public.camera_access grant below.
+  ('44444444-4444-4444-4444-444444444444',
+   'O-Kam Pro Cam',     '10.0.0.12', 'O-Kam Pro',                    'online',
+   NULL, 'North Wing'),
+  ('55555555-5555-5555-5555-555555555555',
+   'iCam365 Indoor',    '10.0.0.13', 'iCam365',                      'online',
+   NULL, 'South Wing'),
+  ('66666666-6666-6666-6666-666666666666',
+   'V380 Pro Cam',      '10.0.0.14', 'V380 Pro',                     'online',
+   NULL, 'Lobby'),
+  ('77777777-7777-7777-7777-777777777777',
+   'Ring Video Doorbell','10.0.0.15', 'Ring Video Doorbell Pro',      'online',
+   NULL, 'Front Entrance'),
+  ('88888888-8888-8888-8888-888888888888',
+   'Blink Mini',        '10.0.0.16', 'Blink Mini',                   'online',
+   NULL, 'Garage'),
+  ('99999999-9999-9999-9999-999999999999',
+   'DMSS DVR Station',  '10.0.0.17', 'Dahua DMSS DVR',               'online',
+   NULL, 'Server Room'),
+  ('AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+   'Cobra DVR',         '10.0.0.18', 'Cobra Surveillance DVR',       'online',
+   NULL, 'Back Office'),
+  ('BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB',
+   'Onwote Cam',        '10.0.0.19', 'Onwote 4MP PoE',               'online',
+   NULL, 'Warehouse'),
+  ('CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC',
+   'Generic CCTV Cam',  '10.0.0.20', 'Generic CCTV Camera',          'online',
+   NULL, 'Storage Room')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
