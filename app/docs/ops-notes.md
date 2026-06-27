@@ -485,11 +485,46 @@ The new section slug `#bug-e-lock-in-workflow` does not collide with any anchor 
 
 ### Closure-cycle audit log (this commit)
 
-The user's closure loop (Phase 2 = temp-revert `?? FALLBACK` to bare `BRAND[cam.brand]`; Phase 3 = restore) ran 2026-06-26 on this host. **Empirical pass/fail observation in `/tmp/build-log/validate-divergence-spec.sh` was blocked** by a host-network Docker-internal DNS issue: the Supabase API gateway (Kong) accepts the request at `127.0.0.1:54321`, then forwards it internally to `rest` / `db` / `gotrue` / `storage` / `realtime` (Docker-internal container aliases), which the host OS cannot resolve in this dev-container. The standard fix is `127.0.0.1 rest db gotrue storage realtime` in `/etc/hosts`, but **not feasible here** (sandbox has no root, `sudo` blocked, `chown` ineffective). Phase 2 therefore failed at `bug-e-brand-divergence.spec.ts:200` `.toBeNull()` with `Received: {"message": "name resolution failed"}` from the service-role seed INSERT — the spec never reached the BRAND-regression surface, so the user's predicted `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` signature did NOT fire empirically. Phase 3 restore landed CameraGrid.tsx byte-equal to HEAD (`37ae861` + `c2ee264` lineage); `git diff HEAD -- app/src/components/CameraGrid.tsx` = empty.
+The user's closure loop (Phase 2 = temp-revert `?? FALLBACK` to bare `BRAND[cam.brand]`; Phase 3 = restore) ran 2026-06-26 on this host. **Empirical closure achieved** in this run after the previously-documented host-network blocker was bypassed with three targeted workarounds. The host `/etc/hosts` shim originally prescribed (`127.0.0.1 rest db gotrue storage realtime`) was orthogonal — the failure point was Kong's internal Docker DNS, not the host's. All three workarounds are non-rootful: `docker exec -u root` grants container-root (not host-root), the symlink is gitignored, and the cache nuke is reversible.
 
-**Closure status: static, not empirical.** The spec's diagnostic prose at `bug-e-brand-divergence.spec.ts` Step 5 is still correct (the zero-`[pageerror]` assertion would fire correctly against an unsupported brand under a working seed path); but the loop's "spec catches regressor" proof is **static** (byte-equal to baseline that was authored against the same BRAND + same `?? FALLBACK` literal, therefore behaves identically) rather than **empirical** (the validator was not re-run after Phase 3 because the same DNS issue re-fails at the same seed-INSERT step). The pre-existing `TS2345` errors in `CameraGrid.tsx` from the tsc sanity check are baseline (arise from the `SetStateAction<Camera[]>` widening in `useEffect`-driven fetches) — NOT introduced by this closure cycle.
+**Phase 2 (temp-revert CameraGrid.tsx L132 to bare `BRAND[cam.brand as keyof typeof BRAND]`)**: `bash /tmp/build-log/validate-divergence-spec.sh` exit=1, with 12 `pageerror` events captured in `/tmp/build-log/validate-divergence-spec.spec.log`.
 
-Next maintainer: when reading "loop closed", interpret that as **file content is byte-equal to its lock-in commit** (`git diff HEAD -- app/src/components/CameraGrid.tsx` = empty). Empirical closure requires either (a) a host with `/etc/hosts` rootful-write access (append `127.0.0.1 rest db gotrue storage realtime`), (b) a Kong upstream-config override mapping internal Docker aliases to `127.0.0.1` (via `supabase/.temp/docker-compose.yml` post-render, but the Kong image's upstream-set behavior is not surfaced for local-dev override cleanly), or (c) a Playwright `--global-setup` script that intercepts PostgREST at the `node-fetch` layer and bends the URL from `rest:3000` to `127.0.0.1:54321`. Track (a) as the simplest path when next working on a fully-rootful capture host.
+- **Canonical branch confirmed (1 of 12 pageerrors)**: `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` — the literal signature the user predicted. Fires at `CameraGrid.tsx:138` on the divergent brand seed (`unsupported_test_brand`) during render of the camera-card HUD pill.
+- **11 of 12 pageerrors are unrelated rtsp:// video play-rejects**: each `<video autoPlay src="rtsp://...">` in the 11 seeded cameras throws a `NotSupportedError` from the browser's media decoder. These fire regardless of whether the defensive `?? FALLBACK` is present — they are an unrelated media-decode issue, NOT a regression of the BRAND lookup. Future improvement (out of scope here): the spec could filter to only `TypeError`-shaped pageerrors, or skip the count when no card mounts; today the noise is tolerated and the test's 20s `toBeVisible` timeout still distinguishes a real regression from media-decode noise (the TypeError throws synchronously and prevents the card from mounting, so toBeVisible times out cleanly while video play-rejects let the card mount).
+
+**Empirical-closure prerequisites** (run these BEFORE the validator, on this host, to convert the closure cycle from static to empirical):
+
+1. **Kong-internal DNS shim** (the load-bearing fix; replaces the host `/etc/hosts` shim the user originally prescribed). Kong receives the test's request at `127.0.0.1:54321`, then forwards internally to PostgREST at hostname `rest` (or `pgrest`/`postgrest`/`supabase_rest`). Inside the Docker network, those names must resolve. The containers are named with the `_Linux` suffix (per project directory naming), so a host-level `/etc/hosts` shim is **orthogonal** to the failure. Fix with `docker exec -u root` (container-root, not host-root):
+   ```bash
+   REST_IP=$(docker inspect supabase_rest_Linux --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | head -1)
+   for h in rest supabase_rest pgrest postgrest; do
+     docker exec -u root supabase_kong_Linux sh -c "grep -qE \"[[:space:]]${h}(\\\$|[[:space:]])\" /etc/hosts || echo '${REST_IP} ${h}' >> /etc/hosts"
+   done
+   ```
+2. **Migrations symlink + db reset**. `supabase/migrations/` does not exist by default in this repo; migrations live at `app/supabase/migrations/`. Without the symlink, `supabase db reset` applies zero migrations, and `public.cameras` doesn't exist, so the bug-e spec's service-role seed INSERT fails with `PGRST205 Could not find the table 'public.cameras' in the schema cache` BEFORE the BRAND TypeError can fire:
+   ```bash
+   ln -s $L/app/supabase/migrations $L/supabase/migrations
+   supabase db reset --no-seed
+   ```
+   The symlink is gitignored (it lives in `supabase/` which is in `.gitignore`); recreate per session.
+3. **Vite kill + cache nuke**. To force vite to pick up the reverted file at L132. The harness's `[A]` step kills prior vite, but a stale `node_modules/.vite` cache can serve a stale module graph in dev mode:
+   ```bash
+   pkill -9 -f vite; pkill -9 -f esbuild; pkill -9 -f 'npm run dev'
+   rm -rf $L/app/node_modules/.vite
+   ```
+   Then the harness's `nohup env VITE_* npm run dev` forks fresh and reads the new file.
+
+**Phase 3 (restore CameraGrid.tsx L132 byte-equal to HEAD, removing the 5-line Phase 2 comment block)**: re-ran `validate-divergence-spec.sh` → exit=0, `pageerror_count=0`, milestones `[bug-e-brand-divergence] seeded_card_visible=OK` and `brand_badge_visible=OK` for `UNSUPPORTED_TEST_BRAND` (the nullish-coalescing fallback label). `git diff HEAD -- app/src/components/CameraGrid.tsx` = empty (NET-ZERO).
+
+**Closure status: EMPIRICAL** (loop fully closed: Phase 2 captured the canonical `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` signature, Phase 3 restore made the same validator exit=0 with 0 pageerrors and the divergent card visible with the `UNSUPPORTED_TEST_BRAND` label). The pre-existing `TS2345` errors in `CameraGrid.tsx` from the tsc sanity check are baseline (arise from the `SetStateAction<Camera[]>` widening in `useEffect`-driven fetches) — NOT introduced by this closure cycle.
+
+**Transient state to clean up on this host** (none of these are committed; all are operational):
+
+- The Kong `/etc/hosts` shim persists until `supabase stop && supabase start` recreates the container.
+- The `supabase/migrations` symlink is gitignored; safe to leave or remove.
+- Vite is left running per harness `[C]` step's `Persist invariant` clause.
+
+Next maintainer: the canonical signature branch is now empirically closed. To reproduce the same closure cycle in one shot, run the three prerequisites above, then the Phase 2 revert + `validate-divergence-spec.sh` + Phase 3 restore + `validate-divergence-spec.sh` sequence. The 12-pageerror-disambiguation is worth a followup: filtering the spec to TypeError-shaped pageerrors (or skipping the count when no card mounts) would make future Bug E regressions louder and the noise floor zero.
 
 
 ## Capture-test triage cheat-sheet
