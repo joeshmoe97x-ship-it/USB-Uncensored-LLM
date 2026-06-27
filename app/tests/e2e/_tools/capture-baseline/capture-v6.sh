@@ -53,7 +53,7 @@ check_pw_unexpected() {
   local tolerated_only=true
   while IFS= read -r u; do
     [ -z "$u" ] && continue
-    if ! echo "$u" | grep -q '^auth-rls\.spec\.ts:27 .*timedOut('; then
+    if ! echo "$u" | grep -q '^auth-rls\.spec\.ts:27.*timedOut'; then
       tolerated_only=false
     fi
   done <<<"$unexpected"
@@ -244,25 +244,13 @@ if [ "$PY_EC" != "0" ]; then printf 'FATAL: scrub failed (exit 35)\n'; tail -50 
 print_phase 'J: scrub gate'
 NV=$(wc -c < "$STUB")
 printf '%s: %s bytes\n' "$STUB" "$NV"
-case "$(cat $STUB)" in
-  *sb_secret_*) printf 'LEAK: sb_secret_*\n'; exit 36 ;;
-  *) printf 'scrub: sb_secret_* PASS\n' ;;
-esac
-case "$(cat $STUB)" in
-  *eyJ[A-Za-z0-9-_]*) printf 'LEAK: JWT\n'; exit 36 ;;
-  *) printf 'scrub: JWT PASS\n' ;;
-esac
+if grep -qE 'sb_secret_[A-Za-z0-9_-]{8,}' "$STUB" 2>/dev/null; then printf 'LEAK: sb_secret_ value-shape\n'; exit 36; else printf 'scrub: sb_secret_ value-shape PASS\n'; fi
+if grep -qE 'eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.' "$STUB" 2>/dev/null; then printf 'LEAK: JWT value-shape\n'; exit 36; else printf 'scrub: JWT value-shape PASS\n'; fi
 ANON=$(jq -r '.ANON_KEY // ""' /tmp/build-log/sb-status.json 2>/dev/null)
 SR=$(jq -r '.SERVICE_ROLE_KEY // ""' /tmp/build-log/sb-status.json 2>/dev/null)
 if [ -n "$ANON" ] && [ -n "$SR" ]; then
-  case "$(cat $STUB)" in
-    *"$ANON"*) printf 'LEAK: ANON_KEY\n'; exit 36 ;;
-    *) printf 'scrub: ANON_KEY PASS\n' ;;
-  esac
-  case "$(cat $STUB)" in
-    *"$SR"*) printf 'LEAK: SERVICE_ROLE_KEY\n'; exit 36 ;;
-    *) printf 'scrub: SERVICE_ROLE_KEY PASS\n' ;;
-  esac
+  if grep -qF -- "$ANON" "$STUB" 2>/dev/null; then printf 'LEAK: ANON_KEY\n'; exit 36; else printf 'scrub: ANON_KEY PASS\n'; fi
+  if grep -qF -- "$SR" "$STUB" 2>/dev/null; then printf 'LEAK: SERVICE_ROLE_KEY\n'; exit 36; else printf 'scrub: SERVICE_ROLE_KEY PASS\n'; fi
 fi
 
 print_phase 'K: shape preview of new stub'

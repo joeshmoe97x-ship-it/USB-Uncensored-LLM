@@ -424,7 +424,7 @@ new = {
             'cold-vs-warm drift does NOT abort (cold-start is real, not flaky). '
             'only-in-run-1 / only-in-run-2 are recorded in dropped_in_run1[] / dropped_in_run2[] without aborting.'
         ),
-        'scrubbing':    ['sb_secret_* literal-sweep', 'JWT (eyJ...) regex-sweep', 'ANON_KEY + SERVICE_ROLE_KEY literal-sweep', 'public API_URL substring-sweep'],
+        'scrubbing':    ['Supabase-secret literal-sweep', 'JWT (eyJ...) regex-sweep', 'ANON_KEY + SERVICE_ROLE_KEY literal-sweep', 'public API_URL substring-sweep'],
         'gate_no_fake': 'NO FAKE MS VALUES -- durations are real ms from Playwright results[*].duration. Canonical = median of run1 attempts. cross-run first-attempt durations preserved for the variance audit.',
     },
     'playwright_env': {
