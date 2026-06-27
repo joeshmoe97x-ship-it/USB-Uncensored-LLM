@@ -33,10 +33,15 @@ check_pw_unexpected() {
   if [ "$ec" = "0" ]; then return 0; fi
   local unexpected
   unexpected=$(jq -r '
-    [.suites[].specs[]? as $s |
+    # Playwright 2.x --reporter=json nests each describe-block as inner
+    # .suites[], so we recurse to find specs at any depth. recurse on
+    # .suites[]? flattens the tree; .specs[]? extracts the actual specs;
+    # the inner any(...) then filters specs whose tests[] have any
+    # non-passed/non-skipped result.
+    [recurse(.suites[]?) | .specs[]? as $s |
      $s.tests[]? as $t |
-     select(any($t.results[]; .status != "passed" and .status != "skipped")) |
-     "\($s.file):\($s.line) " + (
+     select(any($t.results[]?; .status != "passed" and .status != "skipped")) |
+     "\($s.file):\($s.line // "?") " + (
        $t.results[] | select(.status != "passed" and .status != "skipped") | .status
      ) + " (" + ($t.title // "?") + ")"]
     | .[]
