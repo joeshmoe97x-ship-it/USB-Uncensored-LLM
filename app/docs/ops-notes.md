@@ -363,7 +363,7 @@ The four guarded components all use bracket-syntax indexing with `?? FALLBACK`:
 | `app/src/components/EventsList.tsx` | `SEVERITY[severity]`, `TYPE_ICONS[type]` | `?? FALLBACK` / `?? FALLBACK_ICON` | unsupported `severity`/`type` |
 | `app/src/components/ThreatMonitor.tsx` | `TYPE_META[type]` | `?? FALLBACK` | unsupported `type` |
 
-The verbatim `CameraGrid.tsx` pattern at L138:
+The verbatim `CameraGrid.tsx` pattern at L132:
 
 ```typescript
 const brand = BRAND[cam.brand as keyof typeof BRAND] ?? { cls: 'text-gray-300 bg-white/5 border-white/10', label: String(cam.brand ?? '').toUpperCase() };
@@ -475,7 +475,7 @@ Each covers a different failure surface; collapsing any one of them would let th
 
 - [`Recommended Next Step` H2 above](#recommended-next-step-outside-this-commit) — the deferred analytics/inbucket disable path; orthogonal to Bug E but cited for capture-cycle context.
 - [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) is NOT yet in the sentinel table; flag for a followup commit so triage picks it up automatically.
-- `app/src/components/CameraGrid.tsx:138` (verbatim defensive pattern).
+- `app/src/components/CameraGrid.tsx:132` (verbatim defensive pattern).
 - `app/tests/e2e/bug-e-brand-divergence.spec.ts` (regression spec, 4 step names + afterAll + pageerror-array assertion at STEP 5).
 - `capture-v6.sh` Phase F (≈ line 271) + Phase G (≈ line 297) (mirror invariant).
 - `/tmp/build-log/validate-divergence-spec.sh` (per-host validator, 156 lines, two-tier env guard).
