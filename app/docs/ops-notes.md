@@ -579,6 +579,8 @@ const withLegacyCamera = generateLegacyWrapper<Camera>({ ... });
 
 The wrapper then preserves `Camera` shape through `.map(withLegacyCamera)`, `camerasApi.list` returns `Camera[]` as intended, and both L58 + L71 TS2345 errors disappear. This is a single-line type-only change; runtime behavior is unchanged (`generateLegacyWrapper` only defines property-descriptor getters, never mutates values).
 
+**Verify**: `npx tsc --noEmit --project tsconfig.app.json` reports 0 errors after the change. The two TS2345 lines at `CameraGrid.tsx:58` + `:71` disappear; no other errors are introduced. If new errors surface (e.g. due to a stricter inference downstream), they are scope-creep from this fix and should land in a followup commit, not this one.
+
 #### Why the audit log records it instead of fixing it
 
 - The closure cycle's goal was Bug E lock-in (BRAND TypeError regression). Mixing in a Camera-type fix would conflate two unrelated typing concerns.
