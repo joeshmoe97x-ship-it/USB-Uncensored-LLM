@@ -219,7 +219,7 @@ fi
 print_phase 'K: shape preview of new stub'
 python3 - <<'PYEOF'
 import json
-d = json.loads(open('/home/bgdaddy/Downloads/camaras/tests/e2e/_baseline-run.json').read())
+d = json.loads(open('/home/bgdaddy/Downloads/camaras/app/tests/e2e/_baseline-run.json').read())
 print('status:', d.get('status'))
 print('captured_at:', d.get('captured_at'))
 print('aggregate:', json.dumps(d.get('aggregate'), indent=2))
