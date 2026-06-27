@@ -66,15 +66,20 @@
  *   CCCCCCCC.. Generic CCTV Cam
  *   Slot in use here: f00dbabe-...-001 (visibly synthetic; no collision risk).
  *
- * Capture-v6 inclusion: INTENTIONALLY OMITTED from capture-v6.sh Phase F's
- * hardcoded regression-test list, matching bug-e-api-probe.spec.ts's
- * precedent (see that file's JSDoc). Running this spec on every capture
- * cycle would double its row in _baseline-run.json per cycle, distorting
- * the captured_at aggregate counts. The spec is intended to run on DEMAND
- * after a seed-data expansion — i.e., whenever a contributor adds a new
- * brand or otherwise risks expanding the camera-list surface.
+ * Capture-v6 inclusion: INCLUDED in capture-v6.sh Phase F + Phase G as of
+ * commit 7b0904b. The two phases share an identical, hardcoded test list
+ * (capture-v6.sh Phase G mirrors Phase F verbatim) so the spec runs twice
+ * per capture cycle; the row is keyed by spec_meta + line + column
+ * fingerprint by scrub_and_build.py so a duplicate run doesn't double-count.
+ * The earlier INTENTIONALLY OMITTED stance (matching bug-e-api-probe.spec.ts)
+ * was relaxed in 7b0904b because the spec is now the load-bearing regression
+ * guard for the BRAND fallback shape across the four guarded components —
+ * omitting it from the per-cycle capture would let a future contributor's
+ * silent revert slip through. (See the JSDoc caveat at the end of
+ * `docs/ops-notes.md` `## Bug E lock-in workflow` for the prior capture-
+ * v6 wiring context, including the T-RLS-12 row key in _baseline-run.json.)
  *
- *   # To replay on demand (post Phase D env-export in capture-v6.sh):
+ *   # To replay a single run on demand (post Phase D env-export in capture-v6.sh):
  *   npx playwright test tests/e2e/bug-e-brand-divergence.spec.ts --reporter=line
  *
  * Cleanup contract: pre + post delete via service-role. The cameras_delete
