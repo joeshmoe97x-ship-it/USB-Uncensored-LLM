@@ -154,7 +154,7 @@ def scrub_string(s):
 
 CAM = Path(os.environ['CAMARAS'])
 BL = Path('/tmp/build-log')
-STUB = CAM / 'tests' / 'e2e' / '_baseline-run.json'
+STUB = CAM / 'app' / 'tests' / 'e2e' / '_baseline-run.json'
 
 
 def fail(msg, code=99):
