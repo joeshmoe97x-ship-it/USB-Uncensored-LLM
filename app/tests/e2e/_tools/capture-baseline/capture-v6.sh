@@ -12,10 +12,10 @@ exec >"$LOG" 2>&1
 # Path-safe: bash-side path variables only
 PROJECT_DIR="$HOME/Downloads/camaras"
 export CAMARAS="$PROJECT_DIR"
-STUB_REL="tests/e2e/_baseline-run.json"
+STUB_REL="app/tests/e2e/_baseline-run.json"
 STUB="$PROJECT_DIR/$STUB_REL"
 PYTHON_SCRIPT="/home/bgdaddy/USB-Uncensored-LLM/Linux/scrub_and_build.py"
-PLAYWRIGHT="$PROJECT_DIR/node_modules/.bin/playwright"
+PLAYWRIGHT="$PROJECT_DIR/app/node_modules/.bin/playwright"
 
 print_phase() { printf '\n==== %s ====\n' "$1"; date; }
 
@@ -57,6 +57,15 @@ pkill -f 'npm run dev' 2>/dev/null
 ec=$?; printf 'pkill-npm-run-dev ec=%s (1=no-match-OK)\n' "$ec"
 sleep 3
 
+# Empirical-closure prerequisites: symlink app/supabase/{migrations,functions,seed.sql}
+# to $PROJECT_DIR/supabase/ so `supabase start` (run from $PROJECT_DIR) can see them.
+# Idempotent: ln -sfn overwrites any pre-existing symlink. Phase A's docker rm does NOT
+# affect these (they're filesystem, not containers). Matches app/docs/ops-notes.md.
+ln -sfn "$PROJECT_DIR/app/supabase/migrations" "$PROJECT_DIR/supabase/migrations"
+ln -sfn "$PROJECT_DIR/app/supabase/functions" "$PROJECT_DIR/supabase/functions"
+ln -sfn "$PROJECT_DIR/app/supabase/seed.sql" "$PROJECT_DIR/supabase/seed.sql"
+printf 'symlinks: migrations+functions+seed.sql -> $PROJECT_DIR/supabase/\n'
+
 print_phase 'B: supabase start'
 cd "$PROJECT_DIR" || { printf 'cd failed (exit 73)\n'; exit 73; }
 T0=$(date +%s)
@@ -64,9 +73,25 @@ supabase start > /tmp/build-log/supabase-start.log 2>&1
 SSTART_EC=$?
 T1=$(date +%s)
 printf 'supabase-start exit=%s elapsed=%ss\n' "$SSTART_EC" "$((T1-T0))"
-printf '-- last 30 lines --\n'
+printf '%s\n' '-- last 30 lines --'
 tail -30 /tmp/build-log/supabase-start.log
 if [ "$SSTART_EC" != "0" ]; then printf 'FATAL: supabase start failed (exit 31)\n'; exit 31; fi
+
+# Re-apply the Kong /etc/hosts shim (Phase A's docker rm wipes it from the fresh container).
+# Without this, Kong can't resolve internal Supabase service names (rest, postgrest, etc.),
+# which surfaces as 404s on edge functions + PGRST116 0-row errors on tables. Idempotent:
+# the grep -qE guard prevents duplicate /etc/hosts entries on re-runs. Matches the
+# empirical-closure prerequisite in app/docs/ops-notes.md.
+REST_IP=$(docker inspect supabase_rest_Linux --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null | head -1)
+KONG=$(docker ps --filter name=supabase_kong --format '{{.Names}}' | head -1)
+if [ -n "$REST_IP" ] && [ -n "$KONG" ]; then
+  for h in rest supabase_rest pgrest postgrest; do
+    docker exec -u root "$KONG" sh -c "grep -qE '[[:space:]]${h}(\$|[[:space:]])' /etc/hosts || echo '${REST_IP} ${h}' >> /etc/hosts"
+  done
+  printf 'kong-shim: injected %s -> %s\n' "$REST_IP" "$KONG"
+else
+  printf 'kong-shim: SKIPPED (REST_IP=%s KONG=%s)\n' "$REST_IP" "$KONG"
+fi
 
 print_phase 'C: readiness probe (max 120s)'
 poll_health() {
@@ -101,7 +126,7 @@ printf 'exports OK\n'
 
 print_phase 'E: Vite background + readiness'
 rm -f /tmp/build-log/vite-dev.log
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR/app"
 nohup npm run dev > /tmp/build-log/vite-dev.log 2>&1 &
 VITE_PID=$!
 echo "$VITE_PID" > /tmp/build-log/vite.pid
@@ -126,9 +151,13 @@ if [ "$VITE_CODE" != "200" ] && [ "$VITE_CODE" != "304" ]; then
 fi
 
 print_phase 'F: playwright run 1 (cold)'
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR/app"
 T0=$(date +%s)
-DEBUG=pw:api "$PLAYWRIGHT" test tests/e2e/auth-rls.spec.ts --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 \
+  tests/e2e/auth-rls.spec.ts \
+  tests/e2e/admin-users-shapes.spec.ts \
+  tests/e2e/bug-e-brand-divergence.spec.ts \
+  --reporter=json > /tmp/build-log/run1.json 2> /tmp/build-log/run1.stderr
 PW1_EC=$?
 T1=$(date +%s)
 printf 'pw1 exit=%s elapsed=%ss\n' "$PW1_EC" "$((T1-T0))"
@@ -138,9 +167,13 @@ cat /tmp/build-log/run1.stderr > /tmp/build-log/baseline-run.log
 if [ "$PW1_EC" != "0" ]; then printf 'FATAL: pw1 failed (exit 41)\n'; exit 41; fi
 
 print_phase 'G: playwright run 2 (warm)'
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR/app"
 T0=$(date +%s)
-DEBUG=pw:api "$PLAYWRIGHT" test tests/e2e/auth-rls.spec.ts --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
+DEBUG=pw:api "$PLAYWRIGHT" test --workers=1 \
+  tests/e2e/auth-rls.spec.ts \
+  tests/e2e/admin-users-shapes.spec.ts \
+  tests/e2e/bug-e-brand-divergence.spec.ts \
+  --reporter=json > /tmp/build-log/run2.json 2> /tmp/build-log/run2.stderr
 PW2_EC=$?
 T1=$(date +%s)
 printf 'pw2 exit=%s elapsed=%ss\n' "$PW2_EC" "$((T1-T0))"
