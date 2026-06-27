@@ -358,7 +358,7 @@ The four guarded components all use bracket-syntax indexing with `?? FALLBACK`:
 
 | File | Indexed table | Verbatim shape | Defensive against |
 |---|---|---|---|
-| `app/src/components/CameraGrid.tsx` (L138) | `BRAND[cam.brand as keyof typeof BRAND]` | `?? { cls: '...', label: String(cam.brand ?? '').toUpperCase() }` | unsupported `brand` strings |
+| `app/src/components/CameraGrid.tsx` (L132) | `BRAND[cam.brand as keyof typeof BRAND]` | `?? { cls: '...', label: String(cam.brand ?? '').toUpperCase() }` | unsupported `brand` strings |
 | `app/src/components/EvidenceLocker.tsx` | `TYPE_META[type]`, `STATUS_META[status]` | `?? TYPE_META.log_bundle` / `?? STATUS_META.ready` | unsupported `type`/`status` |
 | `app/src/components/EventsList.tsx` | `SEVERITY[severity]`, `TYPE_ICONS[type]` | `?? FALLBACK` / `?? FALLBACK_ICON` | unsupported `severity`/`type` |
 | `app/src/components/ThreatMonitor.tsx` | `TYPE_META[type]` | `?? FALLBACK` | unsupported `type` |
@@ -489,7 +489,7 @@ The user's closure loop (Phase 2 = temp-revert `?? FALLBACK` to bare `BRAND[cam.
 
 **Phase 2 (temp-revert CameraGrid.tsx L132 to bare `BRAND[cam.brand as keyof typeof BRAND]`)**: `bash /tmp/build-log/validate-divergence-spec.sh` exit=1, with 12 `pageerror` events captured in `/tmp/build-log/validate-divergence-spec.spec.log`.
 
-- **Canonical branch confirmed (1 of 12 pageerrors)**: `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` — the literal signature the user predicted. Fires at `CameraGrid.tsx:138` on the divergent brand seed (`unsupported_test_brand`) during render of the camera-card HUD pill.
+- **Canonical branch confirmed (1 of 12 pageerrors)**: `[pageerror] TypeError: Cannot read properties of undefined (reading 'cls')` — the literal signature the user predicted. Fires at `CameraGrid.tsx:132` on the divergent brand seed (`unsupported_test_brand`) during render of the camera-card HUD pill.
 - **11 of 12 pageerrors are likely unrelated rtsp:// video play-rejects** (best-inference classification; the exact text of all 12 captured lines was not directly inspected in this run — verify with `grep '\[pageerror\]' /tmp/build-log/validate-divergence-spec.spec.log | head -15`). Each `<video autoPlay src="rtsp://...">` in the 11 seeded cameras throws a `NotSupportedError` from the browser's media decoder. These fire regardless of whether the defensive `?? FALLBACK` is present — they are an unrelated media-decode issue, NOT a regression of the BRAND lookup. Caveat: this 1+11 split depends on the 11 seeded brands actually being in BRAND's 4 keys (`eseecloud` / `huntervision` / `ajcloud` / `onvif`); if any seeded brand is outside that set, the bare lookup throws for that card too and the 12/12 split is all TypeError. Future improvement (out of scope here): the spec could filter to only `TypeError`-shaped pageerrors, or skip the count when no card mounts; today the noise is tolerated and the test's 20s `toBeVisible` timeout still distinguishes a real regression from media-decode noise (the TypeError throws synchronously and prevents the card from mounting, so toBeVisible times out cleanly while video play-rejects let the card mount).
 
 **Empirical-closure prerequisites** (run these BEFORE the validator, on this host, to convert the closure cycle from static to empirical):
