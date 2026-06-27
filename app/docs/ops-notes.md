@@ -522,10 +522,76 @@ The user's closure loop (Phase 2 = temp-revert `?? FALLBACK` to bare `BRAND[cam.
 
 - The Kong `/etc/hosts` shim persists until `supabase stop && supabase start` recreates the container.
 - The `supabase/migrations` symlink is gitignored; safe to leave or remove.
-- Vite is left running per harness `[C]` step's `Persist invariant` clause.
+- Vite is left running per harness `[C]` step's `Persist invariant` clause.Next maintainer: the canonical signature branch is now empirically closed. To reproduce the same closure cycle in one shot, run the three prerequisites above, then the Phase 2 revert + `validate-divergence-spec.sh` + Phase 3 restore + `validate-divergence-spec.sh` sequence. The 12-pageerror-disambiguation is worth a followup: filtering the spec to TypeError-shaped pageerrors (or skipping the count when no card mounts) would make future Bug E regressions louder and the noise floor zero.
 
-Next maintainer: the canonical signature branch is now empirically closed. To reproduce the same closure cycle in one shot, run the three prerequisites above, then the Phase 2 revert + `validate-divergence-spec.sh` + Phase 3 restore + `validate-divergence-spec.sh` sequence. The 12-pageerror-disambiguation is worth a followup: filtering the spec to TypeError-shaped pageerrors (or skipping the count when no card mounts) would make future Bug E regressions louder and the noise floor zero.
 
+### TS2345 baseline followup (pre-existing, NOT introduced by closure cycle)
+
+`npx tsc --noEmit` on `app/src/components/CameraGrid.tsx` reports two TS2345 errors at lines 58 and 71, both with the same root cause. They predate the closure cycle (the closure cycle only touched L132; the errors are at L58 and L71, which are the `useEffect` and `onAuthStateChange` `setCameras` call sites) and should be tracked but not fixed as part of Bug E lock-in.
+
+#### Verbatim tsc error (from `npx --no-install tsc --noEmit --target ES2022 --moduleResolution node --allowJs --jsx react-jsx --skipLibCheck --pretty src/components/CameraGrid.tsx`)
+
+```
+src/components/CameraGrid.tsx:58:27 - error TS2345: Argument of type 'Dispatch<SetStateAction<Camera[]>>' is not assignable to parameter of type '(value: { id: string; ip?: string; }[]) => void | PromiseLike<void>'.
+  Types of parameters 'value' and 'value' are incompatible.
+    Type '{ id: string; ip?: string; }[]' is not assignable to type 'SetStateAction<Camera[]>'.
+      Type '{ id: string; ip?: string; }[]' is not assignable to type 'Camera[]'.
+        Type '{ id: string; ip?: string; }' is missing the following properties from type 'Camera': owner_id, name, status
+```
+
+L71 reports the same error at the second `.then(setCameras)` call site inside `onAuthStateChange` (L67-L73). Same root cause, same fix.
+
+#### Root cause: narrowing via the legacy-wrapper generic, not widening via useEffect
+
+The user observed "Camera-type widening under useEffect fetches" but the actual mechanism is a **narrowing** at the API layer, not widening at the useEffect call site. The chain:
+
+1. `src/lib/api.ts:48` declares the legacy wrapper with the WRONG generic constraint:
+   ```typescript
+   const withLegacyCamera = generateLegacyWrapper<{ id: string; ip?: string }>({
+     device_id:  'id',
+     ip_address: 'ip',
+   });
+   ```
+   `generateLegacyWrapper<T>` is generic and the inner `applyLegacy` returns `T`, so `withLegacyCamera` infers as `(target: { id: string; ip?: string }) => { id: string; ip?: string }`.
+2. `camerasApi.list: async () => (await fetchCameras()).map(withLegacyCamera)` — the `.map(withLegacyCamera)` is typed as `({id,ip?})[]`, NOT `Camera[]`. The `as Camera[]` cast that would paper over this is absent.
+3. `api.getCameras: () => camerasApi.list()` — returns `Promise<({id,ip?})[]>`.
+4. `CameraGrid.tsx:58` does `api.getCameras().then(setCameras)` where `setCameras: Dispatch<SetStateAction<CameraType[]>>`. The Promise's resolved type is narrower than `CameraType[]`, so `.then` rejects the wider `Dispatch`. tsc reports TS2345.
+
+The useEffect itself isn't the cause — it's just the call site where the narrower type surfaces.
+
+#### Why this is baseline, not introduced by the closure cycle
+
+The closure cycle's only CameraGrid.tsx touch was line 132 (the `BRAND[cam.brand as keyof typeof BRAND] ?? FALLBACK` lookup), which is the regression-lock-in line for Bug E. The TS2345 errors at L58 + L71 are in the `useEffect` body (L54-L96) and the `onAuthStateChange` callback (L67-L73), both well above L132. The `api.getCameras` + `withLegacyCamera` chain in `src/lib/api.ts` is unchanged across the closure cycle's commits. The errors are pre-existing in the codebase as of HEAD (`37ae861` + `c2ee264` lineage); the tsc sanity check in the closure cycle's [D] section merely surfaced them.
+
+#### Proposed one-line fix (out of scope for this audit log entry)
+
+Change `src/lib/api.ts:48` from:
+
+```typescript
+const withLegacyCamera = generateLegacyWrapper<{ id: string; ip?: string }>({ ... });
+```
+
+to:
+
+```typescript
+const withLegacyCamera = generateLegacyWrapper<Camera>({ ... });
+```
+
+The wrapper then preserves `Camera` shape through `.map(withLegacyCamera)`, `camerasApi.list` returns `Camera[]` as intended, and both L58 + L71 TS2345 errors disappear. This is a single-line type-only change; runtime behavior is unchanged (`generateLegacyWrapper` only defines property-descriptor getters, never mutates values).
+
+#### Why the audit log records it instead of fixing it
+
+- The closure cycle's goal was Bug E lock-in (BRAND TypeError regression). Mixing in a Camera-type fix would conflate two unrelated typing concerns.
+- The TS2345 errors are warning-level (no runtime impact — the `.map(withLegacyCamera)` returns a structurally-compatible object at runtime, just narrower at the type level). The closure cycle's empirical PASS at 0 pageerrors + divergent-card-visible milestones confirms the runtime is healthy.
+- A separate, deliberate commit with its own review path is the right shape for the type-only fix. The next maintainer can take the one-line change verbatim from the snippet above.
+
+#### Cross-references
+
+- `src/lib/api.ts:48` — `withLegacyCamera` declaration (the fix site).
+- `src/lib/api.ts:96` — `api.getCameras: () => camerasApi.list()` (the surface that propagates the narrower type).
+- `src/components/CameraGrid.tsx:58` + `:71` — the two TS2345 error sites (both `api.getCameras().then(setCameras)`).
+- `src/types.ts:9-26` — the canonical `Camera` interface (required: `id`, `owner_id`, `name`, `status`).
+- The H3 above (`### Closure-cycle audit log (this commit)`) — the closure cycle that surfaced this baseline issue.
 
 ## Capture-test triage cheat-sheet
 
