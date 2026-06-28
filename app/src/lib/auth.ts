@@ -115,6 +115,12 @@ export async function invokeAdmin(body: AdminAction): Promise<{ ok: boolean; [k:
 export type AdminCreateUserResponse = { ok: boolean; user_id?: string; email?: string };
 export type AdminUpdateUserResponse = { ok: boolean; user?: Partial<Profile> };
 export type AdminDeleteUserResponse = { ok: boolean };
+export type AdminGrantAccessResponse = { ok: boolean };
+// revoke_access surfaces `revoked_at` (the request timestamp, NOT the row's
+// persisted granted_at) per supabase/functions/admin-users/index.ts#L137.
+// grant_access has no equivalent field yet; the `granted_at` symmetric
+// extension is deferred.
+export type AdminRevokeAccessResponse = { ok: boolean; revoked_at?: string };
 
 export async function adminCreateUser(input: { email: string; password: string; display_name?: string; role: UserRole }): Promise<AdminCreateUserResponse> {
   const res = await invokeAdmin({ action: 'create_user', payload: input });
@@ -136,6 +142,16 @@ export async function adminResetPassword(id: string, newPassword: string): Promi
   // with password patch), so it shares AdminUpdateUserResponse's envelope.
   const res = await invokeAdmin({ action: 'update_user', payload: { id, password: newPassword } });
   return res as AdminUpdateUserResponse;
+}
+
+export async function adminGrantAccess(input: { camera_id: string; user_id: string }): Promise<AdminGrantAccessResponse> {
+  const res = await invokeAdmin({ action: 'grant_access', payload: input });
+  return res as AdminGrantAccessResponse;
+}
+
+export async function adminRevokeAccess(input: { camera_id: string; user_id: string }): Promise<AdminRevokeAccessResponse> {
+  const res = await invokeAdmin({ action: 'revoke_access', payload: input });
+  return res as AdminRevokeAccessResponse;
 }
 
 // Thin wrapper around the `list_users_for_admin` edge action.
