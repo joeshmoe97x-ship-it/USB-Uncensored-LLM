@@ -44,7 +44,7 @@ export function LiveTicker({ onJump }: { onJump: (tab: string) => void }) {
       <Icon className="w-3.5 h-3.5" />
       <span className="font-semibold normal-case">{top.type.replace(/_/g, ' ')}</span>
       <span className="opacity-60">·</span>
-      <span className="opacity-90">{formatTimeAgo(top.timestamp)}</span>
+      <span className="opacity-90">{formatTimeAgo(top.timestamp ?? '')}</span>
       <ArrowUpRight className="w-3 h-3 opacity-70" />
     </button>
   );
