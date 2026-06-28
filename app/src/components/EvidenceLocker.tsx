@@ -9,7 +9,7 @@ import { formatTimestamp, formatTimeAgo, downloadBlob } from '../lib/format';
 import { useToast } from './Toast';
 import { DetailModal } from './DetailModal';
 
-const TYPE_META: Record<Evidence['type'], { label: string; icon: ReactElement; cls: string }> = {
+const TYPE_META: Partial<Record<Evidence['type'], { label: string; icon: ReactElement; cls: string }>> = {
   video_clip: { label: 'Video Clip', icon: <FileVideo className="w-5 h-5" />, cls: 'text-blue-300 bg-blue-500/10 border-blue-500/30' },
   snapshot:   { label: 'Snapshot',   icon: <ImageIcon className="w-5 h-5" />, cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   log_bundle: { label: 'Log Bundle', icon: <FileText className="w-5 h-5" />,  cls: 'text-gray-300 bg-white/5 border-white/10' },
@@ -34,7 +34,7 @@ export default function EvidenceLocker() {
     setGenerating((g) => ({ ...g, [id]: true }));
     try {
       await new Promise((r) => setTimeout(r, 1200));
-      const res = await api.generateReport(id);
+      const res = await api.generateReport(id) as unknown as { generated_at: string; report_url: string };
       downloadBlob(
         JSON.stringify({ evidence_id: id, generated_at: res.generated_at, summary: 'Evidence chain-of-custody bundle', url: res.report_url }, null, 2),
         'application/json',
@@ -50,7 +50,7 @@ export default function EvidenceLocker() {
 
   const handleDownload = async (id: string) => {
     try {
-      const res = await api.getEvidenceDownloadUrl(id);
+      const res = await api.getEvidenceDownloadUrl(id) as unknown as { expires_in: number };
       const item = evidence.find((e) => e.id === id);
       const manifest = item ? JSON.stringify(item, null, 2) : 'id=' + id;
       downloadBlob(manifest, 'application/json', id + '.json');
@@ -98,7 +98,7 @@ export default function EvidenceLocker() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((item) => {
-          const meta = TYPE_META[item.type] ?? TYPE_META.log_bundle;
+          const meta = (TYPE_META[item.type] ?? TYPE_META.log_bundle)!;
           const status = STATUS_META[item.status] ?? STATUS_META.ready;
           const isGen = generating[item.id];
           return (
@@ -128,7 +128,7 @@ export default function EvidenceLocker() {
               </div>
 
               <div className="text-[10px] font-mono text-gray-500 flex items-center gap-1.5">
-                <Hash className="w-3 h-3" /> SHA · chain-of-custody sealed · {formatTimeAgo(item.timestamp)}
+                <Hash className="w-3 h-3" /> SHA · chain-of-custody sealed · {formatTimeAgo(item.timestamp ?? '')}
               </div>
 
               <div className="mt-auto grid grid-cols-3 gap-2 pt-3 border-t border-white/5">
@@ -161,22 +161,22 @@ export default function EvidenceLocker() {
       <DetailModal
         open={!!open}
         onClose={() => setOpen(null)}
-        title={open ? (TYPE_META[open.type] ?? TYPE_META.log_bundle).label : '' ?? ""}
+        title={open ? (TYPE_META[open.type] ?? TYPE_META.log_bundle)!.label : ''}
         subtitle={open?.id ?? ""}
       >
         {open && (
           <div className="space-y-4">
             <Field label="Event" value={<span className="font-mono text-blue-300">{open.event_id}</span>} primary />
-            <Field label="Captured" value={formatTimestamp(open.timestamp)} primary />
+            <Field label="Captured" value={formatTimestamp(open.timestamp ?? '')} primary />
             <Field
               label="Status"
               value={<span className={'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ' + (STATUS_META[open.status] ?? STATUS_META.ready).cls}>{(STATUS_META[open.status] ?? STATUS_META.ready).label}</span>}
               primary
             />
             <div className="grid grid-cols-3 gap-2">
-              {open.metadata.duration != null && <Field label="Duration" value={open.metadata.duration + 's'} primary />}
-              {open.metadata.resolution && <Field label="Resolution" value={open.metadata.resolution} primary />}
-              <Field label="Size" value={open.metadata.file_size} primary />
+              {(open.metadata?.duration ?? null) != null && <Field label="Duration" value={(open.metadata?.duration ?? 0) + 's'} primary />}
+              {(open.metadata?.resolution ?? '') && <Field label="Resolution" value={open.metadata?.resolution ?? ''} primary />}
+              <Field label="Size" value={open.metadata?.file_size ?? 0} primary />
             </div>
             <div className="bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-[11px]">
               <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
