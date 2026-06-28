@@ -475,12 +475,12 @@ Each covers a different failure surface; collapsing any one of them would let th
 ### Cross-references
 
 - [`Recommended Next Step` H2 above](#recommended-next-step-outside-this-commit) — the deferred analytics/inbucket disable path; orthogonal to Bug E but cited for capture-cycle context.
-- [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) IS in the sentinel table (T-RLS-12 row key in `_baseline-run.json` per the Bug E closure cycle fix stack `37ae861` + `c2ee264` + `bug-e-brand-divergence.spec.ts` lock-in spec; the closure cycle is empirically closed as of `90c41ee`'s captured baseline dated 2026-06-27T21:36:46Z); the triage ladder picks it up automatically. Note: the sentinel row was added to the table by a prior commit (this cross-reference note is updated by `docs(ops-notes): update Bug E sentinel cross-reference` to flip the stale "is NOT yet" wording).
+- [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) IS in the sentinel table (T-RLS-12 row key in `_baseline-run.json` per the Bug E closure cycle fix stack `37ae861` + `c2ee264` (defensive fallback shape) + `27323db` (regression lock-in spec at `tests/e2e/bug-e-brand-divergence.spec.ts`) + `7b0904b` (capture-v6.sh Phase F+G wiring that includes the spec in both runs); the closure cycle is empirically closed as of `90c41ee`'s captured baseline dated 2026-06-27T21:36:46Z; the triage ladder picks it up automatically. Note: the sentinel row was already in the table before this cross-reference note's stale-wording correction.
 - `app/src/components/CameraGrid.tsx:132` (verbatim defensive pattern).
 - `app/tests/e2e/bug-e-brand-divergence.spec.ts` (regression spec, 4 step names + afterAll + pageerror-array assertion at STEP 5).
-- `capture-v6.sh` Phase F (≈ line 271) + Phase G (≈ line 297) (mirror invariant).
+- `capture-v6.sh` Phase F (cold Playwright run = `print_phase 'F: playwright run 1 (cold)'`) + Phase G (warm Playwright mirror = `print_phase 'G: playwright run 2 (warm)'`) (mirror invariant).
 - `/tmp/build-log/validate-divergence-spec.sh` (per-host validator, 156 lines, two-tier env guard).
-- `app/tests/e2e/_baseline-run.json` T-RLS-12 row (passed × 2 across both runs as of `eacaceb`).
+- `app/tests/e2e/_baseline-run.json` T-RLS-12 row (passed × 2 across both runs as of `90c41ee`).
 
 The new section slug `#bug-e-lock-in-workflow` does not collide with any anchor in the [`Anchor collision covenant` H2 above](#anchor-collision-covenant) inventory.
 
