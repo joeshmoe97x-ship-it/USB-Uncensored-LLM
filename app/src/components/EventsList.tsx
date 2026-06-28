@@ -48,7 +48,7 @@ export default function EventsList() {
             ? [['tactical_gear','long_rifle'],['pistol_hip'],['firearm_hands']][Math.floor(Math.random()*3)] ?? ['tactical_gear']
             : ['person'],
           evidence_ids: [],
-        } as unknown as SecurityEvent).then(fetch);
+        } as Partial<SecurityEvent>).then(fetch);
       }
     }, 4000);
     return () => clearInterval(interval);

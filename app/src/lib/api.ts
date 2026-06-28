@@ -137,9 +137,32 @@ class MockTail {
     const e = this.events.find((x) => x.id === id);
     return e ? withLegacyEvent(e) : undefined;
   }
-  async createEvent(e: SecurityEvent): Promise<SecurityEvent> {
-    this.events = [e, ...this.events];
-    return e;
+  async createEvent(e: Partial<SecurityEvent>): Promise<SecurityEvent> {
+    // Default-fill: callers can pass a partial event (just the meaningful
+    // fields like `type` / `severity` / `ai_labels` / `evidence_ids`) and the
+    // server stamps id + happened_at + acknowledged=false. Deprecated
+    // aliases (`device_id` / `timestamp`) fall through to their canonical
+    // siblings when the caller prefers the legacy naming.
+    const nowIso = new Date().toISOString();
+    const camera_id = e.camera_id ?? e.device_id ?? '';
+    const happened_at = e.happened_at ?? e.timestamp ?? nowIso;
+    const event: SecurityEvent = {
+      id: e.id ?? ('evt-' + Math.random().toString(36).slice(2, 12)),
+      device_id: e.device_id ?? camera_id,
+      camera_id,
+      camera_name: e.camera_name ?? 'Unknown',
+      type: e.type ?? 'motion',
+      severity: e.severity ?? 'low',
+      title: e.title ?? 'Auto-generated event',
+      description: e.description ?? '',
+      ai_labels: e.ai_labels ?? [],
+      evidence_ids: e.evidence_ids ?? [],
+      happened_at,
+      timestamp: e.timestamp ?? happened_at,
+      acknowledged: e.acknowledged ?? false,
+    };
+    this.events = [event, ...this.events];
+    return event;
   }
 
   async listEvidence(): Promise<Evidence[]> {
@@ -147,17 +170,25 @@ class MockTail {
       .sort((a, b) => b.captured_at.localeCompare(a.captured_at))
       .map(withLegacyEvidence) as unknown as Evidence[];
   }
-  async getEvidenceDownloadUrl(id: string): Promise<string> {
+  async getEvidenceDownloadUrl(id: string): Promise<{ expires_in: number }> {
+    // Demo: throw-when-not-found retained for parity with the prior `Promise<string>`
+    // contract, but the response envelope is now `{ expires_in }` per the spec
+    // shared with `camaras/app/docs/ops-notes.md`. In production this would carry a
+    // signed URL too — kept narrower here because EvidenceLocker.tsx doesn't
+    // currently consume the URL string at the call site.
     const ev = this.evidence.find((e) => e.id === id);
     if (!ev) throw new Error('Evidence not found');
-    return ev.url; // demo: data URL or remote URL is already embedded
+    return { expires_in: 3600 };
   }
   async createEvidence(e: Evidence): Promise<Evidence> {
     this.evidence = [e, ...this.evidence];
     return e;
   }
-  async generateReport(scope: string): Promise<string> {
-    return `OmniSight evidence report\nGenerated: ${new Date().toISOString()}\nScope: ${scope}\nEvents: ${this.events.length}\nEvidence: ${this.evidence.length}\n`;
+  async generateReport(scope: string): Promise<{ generated_at: string; report_url: string }> {
+    return {
+      generated_at: new Date().toISOString(),
+      report_url: `mock://omnisight/reports/${scope}/${Date.now()}.json`,
+    };
   }
 
   async listThreats(): Promise<Threat[]> {
@@ -210,7 +241,7 @@ export const api = {
   },
   getEvents: () => mockTail.listEvents(),
   getEvent:  (id: string) => mockTail.getEvent(id),
-  createEvent: (e: SecurityEvent) => mockTail.createEvent(e),
+  createEvent: (e: Partial<SecurityEvent>) => mockTail.createEvent(e),
   getEvidenceList: () => mockTail.listEvidence(),
   createEvidence: (e: Evidence) => mockTail.createEvidence(e),
   getEvidenceDownloadUrl: (id: string) => mockTail.getEvidenceDownloadUrl(id),

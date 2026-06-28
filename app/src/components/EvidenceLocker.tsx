@@ -34,7 +34,7 @@ export default function EvidenceLocker() {
     setGenerating((g) => ({ ...g, [id]: true }));
     try {
       await new Promise((r) => setTimeout(r, 1200));
-      const res = await api.generateReport(id) as unknown as { generated_at: string; report_url: string };
+      const res = await api.generateReport(id);
       downloadBlob(
         JSON.stringify({ evidence_id: id, generated_at: res.generated_at, summary: 'Evidence chain-of-custody bundle', url: res.report_url }, null, 2),
         'application/json',
@@ -50,7 +50,7 @@ export default function EvidenceLocker() {
 
   const handleDownload = async (id: string) => {
     try {
-      const res = await api.getEvidenceDownloadUrl(id) as unknown as { expires_in: number };
+      const res = await api.getEvidenceDownloadUrl(id);
       const item = evidence.find((e) => e.id === id);
       const manifest = item ? JSON.stringify(item, null, 2) : 'id=' + id;
       downloadBlob(manifest, 'application/json', id + '.json');
