@@ -174,9 +174,9 @@ export default function EvidenceLocker() {
               primary
             />
             <div className="grid grid-cols-3 gap-2">
-              {(open.metadata?.duration ?? null) != null && <Field label="Duration" value={(open.metadata?.duration ?? 0) + 's'} primary />}
-              {(open.metadata?.resolution ?? '') && <Field label="Resolution" value={open.metadata?.resolution ?? ''} primary />}
-              <Field label="Size" value={open.metadata?.file_size ?? 0} primary />
+              {open.metadata?.duration != null && <Field label="Duration" value={open.metadata.duration + 's'} primary />}
+              {open.metadata?.resolution != null && <Field label="Resolution" value={open.metadata.resolution} primary />}
+              <Field label="Size" value={open.metadata?.file_size} primary />
             </div>
             <div className="bg-black/40 border border-white/5 rounded-lg p-3 font-mono text-[11px]">
               <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
