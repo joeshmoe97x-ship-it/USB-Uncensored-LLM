@@ -164,7 +164,7 @@ export default function ThreatMonitor() {
   );
 }
 
-function Stat({ icon, label, value, mono, children }: { icon: React.ReactNode; label: string; value: string; mono?: boolean; children?: React.ReactNode }) {
+function Stat({ icon, label, value, mono, children }: { icon: React.ReactNode; label: string; value: string | number | undefined; mono?: boolean; children?: React.ReactNode }) {
   return (
     <div>
       <div className="flex items-center gap-1.5 text-[9px] text-gray-500 uppercase tracking-wider">
