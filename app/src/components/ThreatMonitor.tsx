@@ -62,7 +62,7 @@ export default function ThreatMonitor() {
         {threats.map((threat) => {
           const meta = TYPE_META[threat.type as keyof typeof TYPE_META] ?? { label: String(threat.type ?? 'Unknown').toUpperCase(), cls: 'border-gray-500/30 bg-gray-500/10 text-gray-300', Icon: ShieldAlert };
           const Icon = meta.Icon;
-          const isBlocked = blocked.has(threat.signal_info?.target_mac ?? threat.target_mac);
+          const isBlocked = blocked.has((threat.signal_info?.target_mac ?? threat.target_mac) ?? '');
           const isAck = acked.has(threat.id);
           const sigPct = Math.max(0, Math.min(100, ((threat.signal_info?.rssi ?? (threat.signal_info?.rssi ?? threat.signal_info?.rssi_dbm ?? 0) + 90) / 60) * 100));
           const sigColor =
@@ -101,9 +101,9 @@ export default function ThreatMonitor() {
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-[10px] font-mono text-gray-500">
-                    <Clock className="inline w-3 h-3 mr-1" />{formatTimeAgo(threat.timestamp)}
+                    <Clock className="inline w-3 h-3 mr-1" />{formatTimeAgo(threat.timestamp ?? '')}
                   </div>
-                  <div className="text-[10px] font-mono text-gray-600 mt-0.5">{formatTimestamp(threat.timestamp)}</div>
+                  <div className="text-[10px] font-mono text-gray-600 mt-0.5">{formatTimestamp(threat.timestamp ?? '')}</div>
                 </div>
               </div>
 
@@ -125,7 +125,7 @@ export default function ThreatMonitor() {
               <div className="mt-4 flex gap-2 flex-wrap">
                 <button
                   disabled={isBlocked}
-                  onClick={() => blockMac(threat.signal_info?.target_mac ?? threat.target_mac, threat.id)}
+                  onClick={() => blockMac((threat.signal_info?.target_mac ?? threat.target_mac) ?? '', threat.id)}
                   className={
                     'px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded border transition-colors flex items-center gap-1.5 ' +
                     (isBlocked
