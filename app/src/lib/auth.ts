@@ -86,8 +86,34 @@ export async function invokeAdmin(body: AdminAction): Promise<{ ok: boolean; [k:
 // Source-of-truth is app/supabase/functions/admin-users/index.ts lines 84 /
 // 104 / 112 (create_user / update_user / delete_user respectively). Optional
 // fields surfaced as `?` for parity with invokeAdmin's wide return.
+//
+// AdminUpdateUserResponse.user is typed as `Partial<Profile>` rather than
+// the previous `unknown` so future consumer code can read shaped fields
+// like res.user.email / res.user.role directly without an extra cast.
+//
+// IMPORTANT — fields present vs. NOT present in the response:
+//   The edge function returns `{ ok: true, user: data.user }` where
+//   `data.user` is a Supabase auth.User object lifted from
+//   `adminClient.auth.admin.updateUserById(id, updates)`
+//   (supabase/functions/admin-users/index.ts L104). Partial<Profile> is
+//   used here as a consumption-friendly SUPERSET PROJECTION onto common
+//   fields, NOT as a row-fidelity type. Consumers should treat res.user
+//   as the INTERSECTION of <Supabase auth.User> and <Profile>:
+//     Present on Supabase auth.User AND on Profile:
+//       id (string), email (string | null — Supabase allows null for
+//             phone-only auth)
+//     Present only via user_metadata (Supabase user_metadata object
+//       mirrors Profile fields by design — see admin-users/index.ts L78):
+//         display_name (string), role (UserRole)
+//     NOT present (Profile-only, lives on public.profiles SQL row, NOT
+//       in Supabase auth.User): status, last_login_at, created_at
+//     NOT present by design (Supabase-only, intentionally excluded from
+//       the envelope): email_confirmed_at, phone, app_metadata, aud,
+//       identities[], encrypted_password
+//   All Profile fields are marked optional because the edge response is
+//   partial by nature; consumers should narrow before reading.
 export type AdminCreateUserResponse = { ok: boolean; user_id?: string; email?: string };
-export type AdminUpdateUserResponse = { ok: boolean; user?: unknown };
+export type AdminUpdateUserResponse = { ok: boolean; user?: Partial<Profile> };
 export type AdminDeleteUserResponse = { ok: boolean };
 
 export async function adminCreateUser(input: { email: string; password: string; display_name?: string; role: UserRole }): Promise<AdminCreateUserResponse> {
