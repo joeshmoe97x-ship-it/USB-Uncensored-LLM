@@ -15,7 +15,7 @@ const SEVERITY: Record<string, { cls: string; label: string }> = {
   low:      { cls: 'bg-blue-500/15 text-blue-300 border-blue-500/30',     label: 'Low' },
 };
 
-const TYPE_ICONS: Record<SecurityEvent['type'], ReactElement> = {
+const TYPE_ICONS: Partial<Record<SecurityEvent['type'], ReactElement>> = {
   motion: <Activity className="w-3.5 h-3.5" />,
   tamper: <ShieldAlert className="w-3.5 h-3.5" />,
   intrusion: <AlertTriangle className="w-3.5 h-3.5" />,
@@ -48,7 +48,7 @@ export default function EventsList() {
             ? [['tactical_gear','long_rifle'],['pistol_hip'],['firearm_hands']][Math.floor(Math.random()*3)] ?? ['tactical_gear']
             : ['person'],
           evidence_ids: [],
-        }).then(fetch);
+        } as unknown as SecurityEvent).then(fetch);
       }
     }, 4000);
     return () => clearInterval(interval);
@@ -60,7 +60,7 @@ export default function EventsList() {
       if (severityFilter !== 'all' && e.severity !== severityFilter) return false;
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
       if (q) {
-        const haystack = (e.id + ' ' + e.device_id + ' ' + e.type + ' ' + e.ai_labels.join(' ')).toLowerCase();
+        const haystack = (e.id + ' ' + e.device_id + ' ' + e.type + ' ' + (e.ai_labels ?? []).map(l => typeof l === 'string' ? l : l.label).join(' ')).toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
@@ -129,8 +129,8 @@ export default function EventsList() {
                   <tr key={evt.id} onClick={() => setOpen(evt)} className="hover:bg-white/[0.03] cursor-pointer transition-colors">
                     <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">{evt.id}</td>
                     <td className="px-4 py-2.5">
-                      <div className="font-mono text-xs text-white">{formatTimestamp(evt.timestamp).split(', ')[1] ?? ''}</div>
-                      <div className="text-[10px] text-gray-500">{formatTimeAgo(evt.timestamp)}</div>
+                      <div className="font-mono text-xs text-white">{formatTimestamp(evt.timestamp ?? '').split(', ')[1] ?? ''}</div>
+                      <div className="text-[10px] text-gray-500">{formatTimeAgo(evt.timestamp ?? '')}</div>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={'inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ' + (SEVERITY[evt.severity] ?? { cls: 'bg-gray-500/15 text-gray-300 border-gray-500/30', label: String(evt.severity).toUpperCase() }).cls}>
@@ -146,11 +146,14 @@ export default function EventsList() {
                     <td className="px-4 py-2.5 font-mono text-[11px] text-blue-300">{evt.device_id}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
-                        {evt.ai_labels.map((l) => (
-                          <span key={l} className="bg-white/[0.04] text-gray-300 px-1.5 py-0.5 rounded text-[10px] border border-white/10 font-mono">
-                            {l}
-                          </span>
-                        ))}
+                        {(evt.ai_labels ?? []).map((l) => {
+                          const text = typeof l === 'string' ? l : l.label;
+                          return (
+                            <span key={text} className="bg-white/[0.04] text-gray-300 px-1.5 py-0.5 rounded text-[10px] border border-white/10 font-mono">
+                              {text}
+                            </span>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -174,7 +177,7 @@ export default function EventsList() {
       >
         {open && (
           <div className="space-y-4">
-            <Field label="Timestamp" value={formatTimestamp(open.timestamp)} />
+            <Field label="Timestamp" value={formatTimestamp(open.timestamp ?? '')} />
             <Field
               label="Severity"
               value={
@@ -188,9 +191,12 @@ export default function EventsList() {
               label="AI Labels"
               value={
                 <div className="flex flex-wrap gap-1">
-                  {open.ai_labels.map((l) => (
-                    <span key={l} className="bg-white/[0.04] text-gray-300 px-1.5 py-0.5 rounded text-[11px] border border-white/10 font-mono">{l}</span>
-                  ))}
+                  {(open.ai_labels ?? []).map((l) => {
+                    const text = typeof l === 'string' ? l : l.label;
+                    return (
+                      <span key={text} className="bg-white/[0.04] text-gray-300 px-1.5 py-0.5 rounded text-[11px] border border-white/10 font-mono">{text}</span>
+                    );
+                  })}
                 </div>
               }
             />
