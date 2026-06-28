@@ -82,18 +82,32 @@ export async function invokeAdmin(body: AdminAction): Promise<{ ok: boolean; [k:
 
 // -------------------- admin-only helpers -------------------------------
 
-export async function adminCreateUser(input: { email: string; password: string; display_name?: string; role: UserRole }) {
-  await invokeAdmin({ action: 'create_user', payload: input });
+// Typed response envelopes mirroring the edge function's happy-path JSON.
+// Source-of-truth is app/supabase/functions/admin-users/index.ts lines 84 /
+// 104 / 112 (create_user / update_user / delete_user respectively). Optional
+// fields surfaced as `?` for parity with invokeAdmin's wide return.
+export type AdminCreateUserResponse = { ok: boolean; user_id?: string; email?: string };
+export type AdminUpdateUserResponse = { ok: boolean; user?: unknown };
+export type AdminDeleteUserResponse = { ok: boolean };
+
+export async function adminCreateUser(input: { email: string; password: string; display_name?: string; role: UserRole }): Promise<AdminCreateUserResponse> {
+  const res = await invokeAdmin({ action: 'create_user', payload: input });
+  return res as AdminCreateUserResponse;
 }
 
-export async function adminUpdateUser(id: string, patch: { role?: UserRole; status?: 'active' | 'disabled'; password?: string; display_name?: string }) {
-  await invokeAdmin({ action: 'update_user', payload: { id, ...patch } });
+export async function adminUpdateUser(id: string, patch: { role?: UserRole; status?: 'active' | 'disabled'; password?: string; display_name?: string }): Promise<AdminUpdateUserResponse> {
+  const res = await invokeAdmin({ action: 'update_user', payload: { id, ...patch } });
+  return res as AdminUpdateUserResponse;
 }
 
-export async function adminDeleteUser(id: string) {
-  await invokeAdmin({ action: 'delete_user', payload: { id } });
+export async function adminDeleteUser(id: string): Promise<AdminDeleteUserResponse> {
+  const res = await invokeAdmin({ action: 'delete_user', payload: { id } });
+  return res as AdminDeleteUserResponse;
 }
 
-export async function adminResetPassword(id: string, newPassword: string) {
-  await invokeAdmin({ action: 'update_user', payload: { id, password: newPassword } });
+export async function adminResetPassword(id: string, newPassword: string): Promise<AdminUpdateUserResponse> {
+  // adminResetPassword maps to the same edge-function action (update_user
+  // with password patch), so it shares AdminUpdateUserResponse's envelope.
+  const res = await invokeAdmin({ action: 'update_user', payload: { id, password: newPassword } });
+  return res as AdminUpdateUserResponse;
 }

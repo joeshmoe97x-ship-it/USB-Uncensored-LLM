@@ -72,12 +72,18 @@ export default function UsersTab() {
     disabled: users.filter((u) => u.status === 'disabled').length,
   }), [users]);
 
-  const handleAction = async (action: string, payload: object) => {
+  const handleAction = async (action: string, payload: unknown) => {
     try {
-      if (action === 'create_user')   await adminCreateUser(payload as unknown as Parameters<typeof adminCreateUser>[0]);
-      else if (action === 'delete_user')   await adminDeleteUser(payload as unknown as Parameters<typeof adminDeleteUser>[0]);
+      // Wide payload (unknown) at the dispatch boundary; each branch narrows
+      // back to its action-specific shape via direct `as Parameters<…>`
+      // casts. With source `unknown`, the casts don't need the
+      // `as unknown as` escape — TS2322 only fires when source and target
+      // share no overlap (e.g. `object` vs `{ email: string }`); `unknown`
+      // is the universal top type so direct casts compile cleanly.
+      if (action === 'create_user')   await adminCreateUser(payload as Parameters<typeof adminCreateUser>[0]);
+      else if (action === 'delete_user')   await adminDeleteUser(payload as Parameters<typeof adminDeleteUser>[0]);
       else if (action === 'reset_password')await adminResetPassword((payload as { id: string; password: string }).id, (payload as { id: string; password: string }).password);
-      else if (action === 'update_user')   await adminUpdateUser((payload as unknown as { id: string }).id, payload as unknown as Parameters<typeof adminUpdateUser>[1]);
+      else if (action === 'update_user')   await adminUpdateUser((payload as { id: string }).id, payload as Parameters<typeof adminUpdateUser>[1]);
       else throw new Error('Unknown action ' + action);
       push({ type: 'success', message: 'Saved' });
       await refresh();
