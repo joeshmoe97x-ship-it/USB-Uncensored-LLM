@@ -475,7 +475,7 @@ Each covers a different failure surface; collapsing any one of them would let th
 ### Cross-references
 
 - [`Recommended Next Step` H2 above](#recommended-next-step-outside-this-commit) — the deferred analytics/inbucket disable path; orthogonal to Bug E but cited for capture-cycle context.
-- [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) is NOT yet in the sentinel table; flag for a followup commit so triage picks it up automatically.
+- [`Capture-test triage cheat-sheet` H2 below](#capture-test-triage-cheat-sheet) — sentinel-based triage ladder for capture-v6 stderr. Bug E's sentinel (`[pageerror] TypeError: ... reading 'cls' ...`) IS in the sentinel table (T-RLS-12 row key in `_baseline-run.json` per the Bug E closure cycle fix stack `37ae861` + `c2ee264` + `bug-e-brand-divergence.spec.ts` lock-in spec; the closure cycle is empirically closed as of `90c41ee`'s captured baseline dated 2026-06-27T21:36:46Z); the triage ladder picks it up automatically. Note: the sentinel row was added to the table by a prior commit (this cross-reference note is updated by `docs(ops-notes): update Bug E sentinel cross-reference` to flip the stale "is NOT yet" wording).
 - `app/src/components/CameraGrid.tsx:132` (verbatim defensive pattern).
 - `app/tests/e2e/bug-e-brand-divergence.spec.ts` (regression spec, 4 step names + afterAll + pageerror-array assertion at STEP 5).
 - `capture-v6.sh` Phase F (≈ line 271) + Phase G (≈ line 297) (mirror invariant).
