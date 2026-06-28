@@ -46,7 +46,7 @@ function generateLegacyWrapper<T extends object>(aliases: Record<string, keyof T
   };
 }
 
-const withLegacyCamera = generateLegacyWrapper<{ id: string; ip?: string }>({
+const withLegacyCamera = generateLegacyWrapper<Camera>({
   device_id:  'id',
   ip_address: 'ip',
 });
