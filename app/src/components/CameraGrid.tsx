@@ -76,10 +76,10 @@ export default function CameraGrid() {
     const interval = setInterval(() => {
       api.getEvents().then((events) => {
         const recent = events.filter(
-          (e) => e.type === 'weapon_detected' && new Date(e.timestamp).getTime() > Date.now() - 6000
+          (e) => e.type === 'weapon_detected' && new Date(e.timestamp ?? 0).getTime() > Date.now() - 6000
         );
         const map: Record<string, SecurityEvent> = {};
-        recent.forEach((w) => { if (!map[w.device_id]) map[w.device_id] = w; });
+        recent.forEach((w) => { if (!map[w.device_id ?? '']) map[w.device_id ?? ''] = w; });
         setActiveAlerts(map);
       });
     }, 1000);
