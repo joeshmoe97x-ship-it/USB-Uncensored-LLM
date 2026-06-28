@@ -9,6 +9,7 @@ import { Profile, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import {
   adminCreateUser, adminDeleteUser, adminResetPassword, adminUpdateUser,
+  listUserEmails,
 } from '../lib/auth';
 import { useToast } from './Toast';
 import { DetailModal } from './DetailModal';
@@ -35,15 +36,14 @@ export default function UsersTab() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       // Fetch emails via Edge Function for display only (admin-only).
+      // Typed wrapper exposes Promise<Record<string, string>> directly so
+      // no inline envelope cast is needed and no runtime shape check
+      // (`map && typeof map === 'object'`) is necessary — the wrapper's
+      // type contract guarantees the map is an object when present.
       let enriched: Profile[] = data ?? [];
       try {
-        const res = await supabase.functions.invoke('admin-users', {
-          body: { action: 'list_users_for_admin' },
-        });
-        const map = (res.data as { ok: boolean; emails?: Record<string, string> } | null)?.emails;
-        if (map && typeof map === 'object') {
-          enriched = enriched.map((u) => ({ ...u, email: map[u.id] ?? u.email }));
-        }
+        const emails = await listUserEmails();
+        enriched = enriched.map((u) => ({ ...u, email: emails[u.id] ?? u.email }));
       } catch { /* graceful degrade if Edge Function is unavail for this op */ }
       setUsers(enriched);
     } catch (err) {

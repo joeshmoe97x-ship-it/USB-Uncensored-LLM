@@ -111,3 +111,39 @@ export async function adminResetPassword(id: string, newPassword: string): Promi
   const res = await invokeAdmin({ action: 'update_user', payload: { id, password: newPassword } });
   return res as AdminUpdateUserResponse;
 }
+
+// Thin wrapper around the `list_users_for_admin` edge action.
+//
+// Returns just the emails dictionary the UI actually needs, sparing
+// UsersTab from inline casting. Mirrors invokeAdmin's network-error
+// handling for parity (local dev / unreachable edge function surfaces
+// the same actionable message). Source-of-truth for the envelope is
+// app/supabase/functions/admin-users/index.ts#list_users_for_admin:
+// happy path returns `{ ok: true, emails: Record<string, string> }`,
+// failure returns `{ error: <message> }` with HTTP 400.
+//
+// Returns `{}` on missing/empty `emails` instead of throwing — the
+// consumer (UsersTab) gracefully degrades when emails aren't available,
+// so an empty map here is the natural behaviour, not an error.
+export async function listUserEmails(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body: { action: 'list_users_for_admin' },
+  });
+  if (error) {
+    // Same dual-mode error unwrap as invokeAdmin; see that helper's
+    // comments for the reasoning on FunctionsFetchError vs FunctionsHttpError.
+    const e = error as Error & { name?: string; context?: { status?: number } };
+    const isFetchError = e.name === 'FunctionsFetchError' || e.name === 'FunctionsRelayError';
+    const isNetwork = isFetchError || !e.context?.status;
+    if (isNetwork) {
+      throw new Error(
+        'Edge Function "admin-users" is not reachable. ' +
+        'Run `supabase functions serve admin-users` (local) or ' +
+        '`supabase functions deploy admin-users --no-verify-jwt` (remote).',
+      );
+    }
+    throw new Error(e.message || 'Edge Function call failed.');
+  }
+  const emails = (data as { ok?: boolean; emails?: Record<string, string> } | null)?.emails;
+  return emails ?? {};
+}
