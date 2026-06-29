@@ -317,6 +317,12 @@ The bisect-marker grep `/tmp/build-log/*.log -> 'nestedRemaining is not defined'
 
 **Verification signal — REVERSED (for future regressions).** Until a future regression re-introduces the same dangling reference, the docstring for T-RLS-1 in `_baseline-run.json` will report `"status": "passed"` + `"error_run1_final": null`. Filtering for `"id": "T-RLS-1"` + `"status": "passed"` is now the post-fix bisect-marker; re-emergence of the original symptom will flip it back to `"status": "failed"` + `"error_run1_final.message": "ReferenceError: nestedRemaining is not defined"`.
 
+### Cross-references (Bug D)
+
+Renamed from `### Cross-references` for slug disambiguation per option (ii) of the convention at [`app/docs/ops-notes.md` § Anchor collision covenant](../app/docs/ops-notes.md#anchor-collision-covenant); Bug A + Bug B (Bug B explicitly disambiguated per `bb59c57`) maintain the 3-Bug-with-cross-references-section symmetry.
+
+- [`app/docs/ops-notes.md` § Capture-v6 vs Playwright discovery scope gap](../app/docs/ops-notes.md#capture-v6-vs-playwright-discovery-scope-gap) — Bug D's testcode fix (single-line `const { data: nestedRemaining } = ...` binding insertion at `tests/e2e/admin-users-shapes.spec.ts:317` resolving the orphaned `getUserById` reference that surfaced only after Bug C's `ca2b1f9+amended` cleared the SKIP_COLDSTART cascade) is the THIRD downstream regression introduced by the `b1b309d` back-compat commit — alongside Bug A (CameraGrid JWT race) + Bug B (parse-path back-compat). The `b1b309d` commit canonically anchors T-RLS-1..6 in ops-notes § Capture-v6 table row #1 (`admin-users-shapes.spec.ts` → T-RLS-1..6 `'b1b309d back-compat'`); Bug D's verification signal is the T-RLS-1 row flip from `failed` → `passed` in `_baseline-run.json` (the `nestedRemaining is not defined` ReferenceError eliminated). Closes the bug-diagnoses ↔ ops-notes tripod for Bug D, joining the closed tripods for Bug A + Bug B + Bug C + Bug E; the forward edge (ops-notes § Sentinel-based triage ladder `nestedRemaining is not defined` row → bug-diagnoses Bug D) was pre-existing, this commit closes the backward edge.
+
 ---
 
 ## Bug E — `T-RLS-11` 'Shared Cam' UI locator timeout
