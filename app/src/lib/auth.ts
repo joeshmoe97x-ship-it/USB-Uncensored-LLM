@@ -48,6 +48,53 @@ export async function listCameras() {
   return data ?? [];
 }
 
+// -------------------- shared edge invoker -------------------------------
+
+// Shared wrapper around `supabase.functions.invoke` extracted from
+// `invokeAdmin` and `listUserEmails` so both call sites share one dual-mode
+// network-vs-FunctionHttp error unwrap. With `fix(adminActions)` (8545185),
+// six admin* wrappers (adminCreateUser / adminUpdateUser / adminDeleteUser /
+// adminResetPassword / adminGrantAccess / adminRevokeAccess) all funnel
+// through invokeAdmin, which delegates to invokeEdge here. `listUserEmails`
+// delegates to invokeEdge directly (its body shape isn't an AdminAction
+// variant — list_users_for_admin isn't in the discriminated union).
+//
+// T is the typed response shape; constraint `T extends { ok: boolean }` so
+// the defensive `data ?? { ok: true }` fallback is always type-compatible.
+// All current callers' typed envelopes satisfy this constraint because
+// they all carry an `ok: boolean` (or `ok?: boolean` for envelope-flat
+// successors).
+//
+// Error unwrap contract (preserved verbatim from the prior invokeAdmin
+// implementation; this helper is the single source of truth):
+//   - FunctionsFetchError or FunctionsRelayError (network layer) =>
+//     throw "Edge Function \"<name>\" is not reachable" with the
+//     local/remote serve hints (try-serve for local or deploy for prod).
+//   - FunctionsHttpError (4xx with a JSON error body from the edge) =>
+//     throw e.message verbatim so 400-action-not-found bubbles up as an
+//     actionable, real response error.
+//   - All other errors => throw e.message || 'Edge Function call failed.'
+export async function invokeEdge<T extends { ok: boolean }>(
+  name: string,
+  body: Record<string, any>,
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) {
+    const e = error as Error & { name?: string; context?: { status?: number } };
+    const isFetchError = e.name === 'FunctionsFetchError' || e.name === 'FunctionsRelayError';
+    const isNetwork = isFetchError || !e.context?.status;
+    if (isNetwork) {
+      throw new Error(
+        `Edge Function "${name}" is not reachable. ` +
+        `Run \`supabase functions serve ${name}\` (local) or ` +
+        `\`supabase functions deploy ${name} --no-verify-jwt\` (remote).`,
+      );
+    }
+    throw new Error(e.message || 'Edge Function call failed.');
+  }
+  return (data ?? { ok: true }) as T;
+}
+
 // -------------------- admin user mgmt via Edge --------------------------
 
 export type AdminAction =
@@ -58,26 +105,10 @@ export type AdminAction =
   | { action: 'revoke_access'; payload: { camera_id: string; user_id: string } };
 
 export async function invokeAdmin(body: AdminAction): Promise<{ ok: boolean; [k: string]: unknown }> {
-  const { data, error } = await supabase.functions.invoke('admin-users', { body });
-  if (error) {
-    // Supabase FunctionsFetchError is thrown for network failures / DNS / 5xx.
-    // Function 4xx responses (e.g. action not found) become FunctionsHttpError
-    // and carry error.context with the status — we DO want to surface those
-    // verbatim because they are real, actionable response errors.
-    const e = error as Error & { name?: string; context?: { status?: number }; cause?: unknown };
-    const isFetchError = e.name === 'FunctionsFetchError' || e.name === 'FunctionsRelayError';
-    const status = e.context?.status;
-    const isNetwork = isFetchError || status === 0 || status === undefined;
-    if (isNetwork) {
-      throw new Error(
-        'Edge Function "admin-users" is not reachable. ' +
-        'Run `supabase functions serve admin-users` (local) or ' +
-        '`supabase functions deploy admin-users --no-verify-jwt` (remote).',
-      );
-    }
-    throw new Error(e.message || 'Edge Function call failed.');
-  }
-  return (data ?? { ok: true }) as { ok: boolean; [k: string]: unknown };
+  // Thin delegation to invokeEdge; preserves the typed AdminAction union on
+  // `body` (caller-facing API unchanged). The wide-typed return preserves
+  // back-compat for the six admin* wrappers that cast `res as <Envelope>`.
+  return invokeEdge<{ ok: boolean; [k: string]: unknown }>('admin-users', body);
 }
 
 // -------------------- admin-only helpers -------------------------------
@@ -168,24 +199,11 @@ export async function adminRevokeAccess(input: { camera_id: string; user_id: str
 // consumer (UsersTab) gracefully degrades when emails aren't available,
 // so an empty map here is the natural behaviour, not an error.
 export async function listUserEmails(): Promise<Record<string, string>> {
-  const { data, error } = await supabase.functions.invoke('admin-users', {
-    body: { action: 'list_users_for_admin' },
+  // Thin delegation to invokeEdge; unwraps the typed envelope at the
+  // auth.ts boundary and returns just the emails dictionary the UI
+  // actually needs (graceful-degrade `{}` on missing/empty).
+  const res = await invokeEdge<{ ok: boolean; emails?: Record<string, string> }>('admin-users', {
+    action: 'list_users_for_admin',
   });
-  if (error) {
-    // Same dual-mode error unwrap as invokeAdmin; see that helper's
-    // comments for the reasoning on FunctionsFetchError vs FunctionsHttpError.
-    const e = error as Error & { name?: string; context?: { status?: number } };
-    const isFetchError = e.name === 'FunctionsFetchError' || e.name === 'FunctionsRelayError';
-    const isNetwork = isFetchError || !e.context?.status;
-    if (isNetwork) {
-      throw new Error(
-        'Edge Function "admin-users" is not reachable. ' +
-        'Run `supabase functions serve admin-users` (local) or ' +
-        '`supabase functions deploy admin-users --no-verify-jwt` (remote).',
-      );
-    }
-    throw new Error(e.message || 'Edge Function call failed.');
-  }
-  const emails = (data as { ok?: boolean; emails?: Record<string, string> } | null)?.emails;
-  return emails ?? {};
+  return res.emails ?? {};
 }
