@@ -98,6 +98,10 @@ Realtime WS channel.
 
 ### 5. Env-var surface
 
+- [ ] Press <kbd>6</kbd> in the OmniSight SPA (admin-only) to open the Deployment Guide tab.
+- [ ] Cross-check the four code-snippet sections (Architecture / API Gateway / AI / NVR / Wireless IDS) against your orchestration repo before `docker compose up -d`.
+- [ ] Run `kubectl apply -f docker-compose.yml --dry-run=client` to validate the rendered manifest locally, pausing here for the orchestrate-repo PR review to land before the live `docker compose up -d`.
+
 Two Vite-side keys are required (consumed by `app/src/lib/supabase.ts` via
 `import.meta.env`). One server-side key is required by the e2e harness only and
 **must never be shipped to a public SPA bundle**.
