@@ -5,9 +5,10 @@
 
 set +e
 
-LOG=/tmp/build-log/path-a-capture-v6.log
+LOG="${LOG:-/tmp/build-log/path-a-capture-v6.log}"
 mkdir -p /tmp/build-log
-exec >"$LOG" 2>&1
+# Default to honouring caller outer-redirects; override inner FD only if LOG_DIRTY=1
+[ -n "${LOG_DIRTY+x}" ] && [ "$LOG_DIRTY" = "1" ] && exec >"$LOG" 2>&1
 
 # Path-safe: bash-side path variables only
 PROJECT_DIR="$HOME/USB-Uncensored-LLM/Linux/app"
