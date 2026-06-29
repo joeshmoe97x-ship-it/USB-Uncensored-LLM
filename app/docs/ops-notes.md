@@ -832,7 +832,7 @@ The probe's own JSDoc (`tests/e2e/bug-e-api-probe.spec.ts`) was updated in the s
 
 ### Cross-references
 
-- `app/tests/e2e/bug-e-api-probe.spec.ts` — the excluded diag spec (top-of-file JSDoc: INTENTIONAL non-inclusion)
+- `app/tests/e2e/bug-e-api-probe.spec.ts` — the excluded diag spec (top-of-file JSDoc: cross-references this section)
 - `app/playwright.config.ts` — `testDir: './tests/e2e'`, `testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']` (audit gap closed at tooling layer; see [Resolution intent](#resolution-intent-tooling-layer-fix-adopted) above)
 - `app/tests/e2e/_tools/capture-baseline/capture-v6.sh` — Phase F + G hardcoded 3-spec list (`tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts tests/e2e/bug-e-brand-divergence.spec.ts`); intentional filter, not a glob
 - [`Bug E lock-in workflow`](#bug-e-lock-in-workflow) H2 above — the four-artifact design rationale (this section is its deliberate Artifact-4 sibling)
