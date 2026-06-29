@@ -1,3 +1,11 @@
+#!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11).
+# Tripod Closure: see `app/docs/ops-notes.md` #anchor-collision-covenant (the H2 convention this script validates end-to-end).
+# Anchor Covenant (inverse): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); both registered as inverse anchors of the docs corpus.
+# Disambiguation: validation tool — idempotent + read-only against `docs/*` + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
+# Tag Chain: synced with audit-cycle tag chain (no version pin).
+# ----------------------------------------------------------------------------
 PROJECT_DIR=$HOME/USB-Uncensored-LLM/Linux/app
 OPS="$PROJECT_DIR/docs/ops-notes.md"
 LOG=/tmp/build-log/final-archeology-drift-audit.log
