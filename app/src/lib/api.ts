@@ -4,7 +4,7 @@
 // the camera ID switches to a UUID.
 import { supabase } from './supabase';
 import type {
-  Camera, SecurityEvent, Evidence, Threat, EvidenceMeta,
+  Camera, CameraAccess, SecurityEvent, Evidence, Threat, EvidenceMeta,
 } from '../types';
 
 // ----------------------------------------------------------------------------
@@ -119,6 +119,24 @@ export const camerasApi = {
   },
   remove: (id: string) =>
     supabase.from('cameras').delete().eq('id', id).then(({ error }) => { if (error) throw error; }),
+
+  // CameraAccess surface — RLS-aware SELECT of public.camera_access rows.
+  // Admin (or camera owner) can read all rows; non-admin non-owners only see
+  // their own grants. The UI in app/src/components/UsersTab.tsx uses this
+  // to enumerate the per-camera viewer list before reaching for the typed
+  // edge-action adminGrantAccess / adminRevokeAccess wrappers.
+  //
+  // Scope: no pagination, no per-camera/per-user filter. Acceptable for the
+  // MVP demo (≤50 rows). Production scale (>10k rows) would want a range-
+  // bounded fetch or cursor pagination.
+  listAccess: async (): Promise<CameraAccess[]> => {
+    const { data, error } = await supabase
+      .from('camera_access')
+      .select('*')
+      .order('granted_at', { ascending: false }); // newest-first for UI grouping
+    if (error) throw error;
+    return (data ?? []) as unknown as CameraAccess[];
+  },
 };
 
 // -------------- Events / Evidence / Threats (in-memory demo) ------------

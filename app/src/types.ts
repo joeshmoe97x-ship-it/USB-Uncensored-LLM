@@ -160,3 +160,39 @@ export interface Profile {
 
 /** Back-compat alias: previous code referenced {User}; renamed to {Profile}. */
 export type User = Profile;
+
+// --------------------------- Camera access ------------------------------
+
+/**
+ * Row in public.camera_access (the many-to-many table that grants per-user
+ * visibility for shared cameras). Mirrors the schema at
+ * app/supabase/migrations/20250101000000_init_schema.sql#L38-46:
+ *   id          uuid primary key default gen_random_uuid()
+ *   camera_id   uuid references public.cameras(id) on delete cascade
+ *   user_id     uuid references auth.users(id) on delete cascade
+ *   granted_by  uuid references auth.users(id)        (nullable)
+ *   granted_at  timestamptz not null default now()    (audit timestamp)
+ *   unique (camera_id, user_id)                       (no dupes per pair)
+ *
+ * RLS policy: SELECT permitted when user_id = auth.uid() OR is_admin() OR
+ * is_camera_owner(camera_id); INSERT/DELETE permitted when is_admin() OR
+ * is_camera_owner(camera_id). Source: same migration#L121-148.
+ *
+ * The granting dance (UI grants admin → user X access to camera C) lands
+ * here so admin actions route through the typed envelope boundary in
+ * app/src/lib/auth.ts#adminGrantAccess rather than mutating this table
+ * directly. UI consumers read this shape via App.camaras.api.ts's
+ * camerasApi.listAccess() (added in feat(cameraAccess-api)).
+ */
+export interface CameraAccess {
+  id: string;
+  camera_id: string;
+  user_id: string;
+  // granted_by is a nullable audit column (per SQL at
+  // supabase/migrations/20250101000000_init_schema.sql#L43). Edge function
+  // grant_access now stamps callerId (non-null in the standard flow), but
+  // historical rows + transient grant_attempts can carry null — type the
+  // column faithfully to mirror Profile.last_login_at: string | null.
+  granted_by: string | null;
+  granted_at: string;
+}
