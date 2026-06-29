@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
-# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11).
+# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension).
 # Tripod Closure: see `app/docs/ops-notes.md` #anchor-collision-covenant (the H2 convention this script validates end-to-end).
-# Anchor Covenant (inverse): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); both registered as inverse anchors of the docs corpus.
-# Disambiguation: validation tool — idempotent + read-only against `docs/*` + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
+# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and `""" docstring """` (Python) sectors; registered as inverse anchors of the docs/tooling corpus.
+# Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
 # Tag Chain: synced with audit-cycle tag chain (no version pin).
 # ----------------------------------------------------------------------------
 PROJECT_DIR=$HOME/USB-Uncensored-LLM/Linux/app
@@ -39,6 +39,38 @@ mkdir -p /tmp/build-log
   echo
   echo '-- frequency distribution --'
   grep -oE '#[a-z][a-z0-9-]*' "$OPS" | sort | uniq -c | sort -rn
+
+  # v2.5: cross-domain header-rendering check extension
+  echo
+  echo '-- v2.5: shell SPDX Provenance census (per-file, line-numbered) --'
+  sh_files=$(git ls-files '*.sh' 2>/dev/null)
+  if [ -n "$sh_files" ]; then
+    grep -nHE '^# Provenance: introduced by `[a-f0-9]{7}`' $sh_files 2>/dev/null || echo '   (no shell SPDX Provenance found)'
+  else
+    echo '   (no .sh files tracked by git)'
+  fi
+  echo
+  echo '-- v2.5: shell SPDX Anchor Covenant kind census --'
+  if [ -n "$sh_files" ]; then
+    grep -hE '^# Anchor Covenant \([^)]+\):' $sh_files 2>/dev/null | sort | uniq -c | sort -rn || echo '   (no shell SPDX Anchor Covenant found)'
+  else
+    echo '   (no .sh files tracked by git)'
+  fi
+  echo
+  echo '-- v2.5: Python docstring SPDX Provenance census (per-file, line-numbered) --'
+  py_files=$(git ls-files '*.py' 2>/dev/null)
+  if [ -n "$py_files" ]; then
+    grep -nHE '^Audit-Chain Provenance: introduced by `[a-f0-9]{7}`' $py_files 2>/dev/null || echo '   (no Python SPDX Provenance found)'
+  else
+    echo '   (no .py files tracked by git)'
+  fi
+  echo
+  echo '-- v2.5: Python docstring SPDX Anchor Covenant kind census --'
+  if [ -n "$py_files" ]; then
+    grep -hE '^Anchor Covenant \([^)]+\):' $py_files 2>/dev/null | sort | uniq -c | sort -rn || echo '   (no Python SPDX Anchor Covenant found)'
+  else
+    echo '   (no .py files tracked by git)'
+  fi
 
   print_phase 'D: every GFM cross-reference [text](#anchor) link; classify by target slug'
   echo '-- links that begin with # --'
@@ -78,6 +110,25 @@ mkdir -p /tmp/build-log
     printf '   %s  %s\n' "$sha" "$subject"
   done
 
+  # v2.5: per-sector Anchor Covenant kind survey
+  echo
+  echo '-- v2.5: per-sector Anchor Covenant kind survey (from all SPDX-bearing files) --'
+  echo '   shell Anchor Covenant kinds (from .sh files):'
+  sh_files_g=$(git ls-files '*.sh' 2>/dev/null)
+  if [ -n "$sh_files_g" ]; then
+    grep -hE '^# Anchor Covenant \([^)]+\):' $sh_files_g 2>/dev/null | sed 's/^# //' | sort | uniq -c | sort -rn || echo '      (none found)'
+  else
+    echo '      (no .sh files tracked by git)'
+  fi
+  echo
+  echo '   Python Anchor Covenant kinds (from .py files):'
+  py_files_g=$(git ls-files '*.py' 2>/dev/null)
+  if [ -n "$py_files_g" ]; then
+    grep -hE '^Anchor Covenant \([^)]+\):' $py_files_g 2>/dev/null | sort | uniq -c | sort -rn || echo '      (none found)'
+  else
+    echo '      (no .py files tracked by git)'
+  fi
+
   print_phase 'H: any potential orphan / dual-cite residue'
   echo '-- backtick-closing pattern followed immediately by another backtick --'
   grep -nE '`\s*,?\s*`[a-zA-Z]' "$OPS" | head -10 || true
@@ -102,13 +153,38 @@ mkdir -p /tmp/build-log
   print_phase 'J: file-wide unbroken implicit-link scan (no broken link parsable via git grep)'
   echo '-- search any cross-reference whose target slug does not match a known H2/H3 --'
   broken=0
-  for anchor_target in $(grep -oE '\]\(#[a-z][a-z0-9-]*\)' "$OPS" | sed 's/^](\(#[^)]*\))$/\1/' | sort -u); do
+  for anchor_target in $(grep -oE '\]\(#[a-z][a-z0-9-]*\)' "$OPS" | sed 's/^](\(#[^)]*)\)]$/\1/' | sort -u); do
     if ! grep -qF "$anchor_target" "$OPS" 2>/dev/null; then
       echo "   unverified target: $anchor_target"
       broken=$((broken+1))
     fi
   done
   echo "   (count: $broken; flagged for deeper GFM-slug audit by reviewer/thunker)"
+
+  # v2.5: per-file domain-coverage assertion
+  echo
+  echo '-- v2.5: per-file domain-coverage assertion (every SPDX-bearing .sh / .py file must have all 5 semantic lines in first 15) --'
+  coverage_failures=0
+  coverage_files=0
+  for f in $(git ls-files '*.sh' '*.py' 2>/dev/null); do
+    head15=$(head -15 "$f" 2>/dev/null)
+    if ! echo "$head15" | grep -qE '^# Provenance: introduced by `[a-f0-9]{7}`|^Audit-Chain Provenance: introduced by `[a-f0-9]{7}`'; then
+      continue
+    fi
+    coverage_files=$((coverage_files+1))
+    missing=""
+    echo "$head15" | grep -qE '^# Tripod Closure:|^Tripod Closure:' || missing="$missing Tripod"
+    echo "$head15" | grep -qE '^# Anchor Covenant \(|^Anchor Covenant \(' || missing="$missing Anchor"
+    echo "$head15" | grep -qE '^# Disambiguation:|^Disambiguation:' || missing="$missing Disambig"
+    echo "$head15" | grep -qE '^# Tag Chain:|^Tag Chain:' || missing="$missing Tag"
+    if [ -z "$missing" ]; then
+      echo "   $f: OK (5/5 semantic lines)"
+    else
+      echo "   $f: PARTIAL, missing:$missing"
+      coverage_failures=$((coverage_failures+1))
+    fi
+  done
+  echo "   (audited: $coverage_files files; coverage failures: $coverage_failures; 0 expected at v2.5)"
 
   print_phase 'K: git log --reverse archeology summary (every commit touching docs/ops-notes.md)'
   echo '-- every commit touching the file (with intro/affect line counts) --'
