@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Rebuild tests/e2e/_baseline-run.json from /tmp/build-log/run{1,2}.json.
+"""[Audit-Chain Provenance: introduced by `3a52e32` (`chore(infra): persist capture-v6.sh + scrub_and_build.py + audit_script.sh + supabase config`, audit-chain adoption v2.4).
+ Tripod Closure: see `docs/ops-notes.md` #capture-v6-vs-playwright-discovery-scope-gap (this script is the immediate downstream consumer of `capture-v6.sh`'s `run1.json` + `run2.json` output; the canonical capture-pipeline tripod is `[capture-v6.sh : scrub_and_build.py : _baseline-run.json]`).
+ Anchor Covenant (regex/escape/JSON-path/scrub-key): strictly depends on (a) the Playwright `--reporter=json` 4-tier hierarchy (Suite -> Spec -> Test -> Result); (b) `sb-status.json` keys `ANON_KEY` + `SERVICE_ROLE_KEY` + `API_URL` (all sourced from `supabase status -o json`); (c) scrub regexes `sb_secret_[A-Za-z0-9_-]+` + `eyJ[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+\\.?[A-Za-z0-9-_.+/=]*` (literal-string `scrub_string` call-sites apply them per-string); (d) the `/app/app/`-not-in-STUB canonical-path guard invariant inherited from `capture-v6.sh` Phase M.
+ Disambiguation: canonical Playwright --reporter=json scrubber + `_baseline-run.json` writer; the ONLY Python tooling file at HEAD (cross-layer extension from bash SPDX pattern; not an extension of v2.0..v2.3); per-row output format (`{id: T-RLS-N, status, duration_ms, ...}` envelope) is downstream of the audit-chain header and is unchanged by this commit.
+ Tag Chain: synced as of audit-cycle-v2.4.]
+
+Rebuild tests/e2e/_baseline-run.json from /tmp/build-log/run{1,2}.json.
 
 Canonical Playwright --reporter=json schema (4-tier hierarchy):
   Suite  node: { title, file, line, column, suites[], specs[] }
