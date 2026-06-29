@@ -19,22 +19,31 @@ test.describe('Supabase auth + RLS isolation', () => {
   test.describe('Viewer isolation paths', () => {
 
   /**
-   * @testId T-RLS-1
+   * @testId T-RLS-1 (split: admin sign-in sees both)
    * @scenario positive
-   * @description viewer RLS boundaries hold against cross-tenant reads
-   * @prerequisites viewer session; seeded camera fixtures
+   * @description admin sign-in: SHARED_CAM + PRIVATE_CAM both visible under is_admin() RLS
+   * @prerequisites admin session (provisioned by tests/e2e/global-setup.ts ensureAdminAuthRow)
+   *
+   * Splits out of the prior monolithic T-RLS-1 (which combined admin+viewer flows
+   * in a single test body) because the combined flow was hitting the 60s
+   * Playwright global timeout in _baseline-run.json aggregate across two
+   * consecutive capture-v6.sh runs: the bottleneck was the `.toHaveCount(0)`
+   * PRIV assertion (no explicit timeout) that, if a state-bleed persisted
+   * across the in-test sign-out sequence, would consume the rest of the test
+   * budget as a generic 60s timedOut, masking the actual AssertionError. Each
+   * split-half now has a hermetic browser execution context (no in-test
+   * sign-out hop), eliminating the cache/state-bleed failure mode.
+   *
+   * Both halves are read-only assertions on static seed data -- safe to run in
+   * parallel; no `test.describe.configure({ mode: 'serial' })` required.
    */
-  test('viewer cannot see admin private cameras; can see shared ones', async ({ page }, testInfo) => {
+  test('admin sign-in: sees both SHARED_CAM and PRIVATE_CAM', async ({ page }, testInfo) => {
     const dump = captureConsoleAndNetwork(page, testInfo.title);
 
-    const env = readSupabaseEnv();
-
-    // ------- 1. Sign in as admin -------
+    // ------- Admin sign-in (no pre-admin state to bleed over) -------
     await page.goto('/');
     // Defensive: assert login form is visible BEFORE the first .fill() so a missing/never-painted
     // element fails fast at the explicit 10s locator timeout instead of a generic 60s test timeout.
-    // Without this guard, T-RLS-11 was hanging the entire 60s Playwright global timeout waiting on
-    // a never-acted-on element (root cause still under investigation — see supabase/migrations/).
     await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('login-email-input').fill(ADMIN_EMAIL);
     await page.getByTestId('login-password-input').fill(ADMIN_PASSWORD);
@@ -46,32 +55,57 @@ test.describe('Supabase auth + RLS isolation', () => {
     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))
       .toBeVisible({ timeout: 20_000 });
 
-    // Fixtures (viewer auth.users row + profile + Shared Cam camera_access grant) are
-    // installed at cold-start by tests/e2e/global-setup.ts's ensureViewerFixtures() block.
-    // No inline provisioning is needed here; T-RLS-5 is a pure RLS-isolation assertion.
+    console.log(dump());
+  });
+
+  /**
+   * @testId T-RLS-1 (split: viewer sign-in sees only shared)
+   * @scenario positive
+   * @description viewer sign-in: sees SHARED_CAM under camera_access grant;
+   *              does NOT see PRIVATE_CAM under RLS
+   * @prerequisites viewer session (ensureViewerAuthRow global setup) + Shared Cam
+   *              camera_access grant (Phase B.5 seed.sql replay)
+   *
+   * Splits out of the prior monolithic T-RLS-1 to give the viewer a hermetic
+   * browser execution context (no in-test sign-out hop) so a state bleed from
+   * the admin session can't linger. The `.toHaveCount(0)` PRIVATE_CAM assertion
+   * gets an EXPLICIT 20s timeout so a future real RLS leak fails fast as
+   * AssertionError("expected to have count 0, got N") rather than the generic
+   * 60s global timedOut that masked the actual signal in the T-RLS-1
+   * monolithic flow. The 20s matches the SHARED_CAM `.toBeVisible` window
+   * so RLS filtering has the same budget as the visibility assertion; the
+   * two timeouts degrade predictably together.
+   */
+  test('viewer sign-in: sees SHARED_CAM only (RLS isolation)', async ({ page }, testInfo) => {
+    // Bump per-test timeout to 90s. Signaling chain ≈ 10s login form + 20s SHARED_CAM
+    // + 20s PRIVATE_CAM + page.goto + fills/log ≈ 55-57s nominal; the 30s headroom absorbs
+    // cold Vite/kong edge-fn starts without changing the failure-mode-leak detection
+    // that the surgical 20s `.toHaveCount(0)` timeout still provides.
+    test.setTimeout(90_000);
+    const dump = captureConsoleAndNetwork(page, testInfo.title);
+
+    const env = readSupabaseEnv();
     const admin = createServiceClient(env);
+    // Fixtures (viewer auth.users row + Shared Cam camera_access grant) are
+    // installed at cold-start by tests/e2e/global-setup.ts's ensureViewerAuthRow
+    // + Phase B.5 seed.sql replay respectively. Informational check only.
     const { data: existingViewer } = await admin
       .from('profiles').select('id, role').eq('email', VIEWER_EMAIL).maybeSingle();
-    console.log(`[T-RLS-5] fixtures_present=${!!existingViewer?.id} viewer.role=${existingViewer?.role ?? 'none'}`);
+    console.log(`[T-RLS-1 viewer] fixtures_present=${!!existingViewer?.id} viewer.role=${existingViewer?.role ?? 'none'}`);
 
-    // ------- 4. Sign out admin -------
-    await page.getByTestId('app-signout').click();
-    await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
-
-    // ------- 5. Sign in as viewer -------
-    // Defensive: assert login form reappeared after app-signout click before re-filling.
-    // The 10s explicit timeout here is redundant with line 54 above but documents intent
-    // and survives any future refactor that removes the post-signout assertion.
+    // ------- Direct viewer sign-in (no preceding admin session) -------
+    await page.goto('/');
     await expect(page.getByTestId('login-email-input')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('login-email-input').fill(VIEWER_EMAIL);
     await page.getByTestId('login-password-input').fill(VIEWER_PASSWORD);
     await page.getByTestId('login-submit').click();
 
-    // ------- 6. Assertions: RLS isolation -------
+    // ------- RLS isolation assertions -------
     await expect(page.getByTestId('camera-card').filter({ hasText: SHARED_CAM }))
       .toBeVisible({ timeout: 20_000 });
+    // Surgical 20s timeout -- the prior monolithic used the global 60s default which masked RLS-leak signals.
     await expect(page.getByTestId('camera-card').filter({ hasText: PRIVATE_CAM }))
-      .toHaveCount(0);
+      .toHaveCount(0, { timeout: 20_000 });
 
     console.log(dump());
   });
