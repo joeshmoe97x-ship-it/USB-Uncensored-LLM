@@ -6,6 +6,13 @@
  *   app/docs/ops-notes.md § Capture-v6 vs Playwright discovery scope gap
  *   (anchor #capture-v6-vs-playwright-discovery-scope-gap).
  *
+ * Canonical diagnosis doc (bidirectional tripod — JSDoc ↔ bug-diagnoses.md ↔ ops-notes.md):
+ *   ../../docs/bug-diagnoses.md ## Bug E — `T-RLS-11` 'Shared Cam' UI locator timeout
+ *   (anchor #bug-e--t-rls-11-shared-cam-ui-locator-timeout).
+ *   This spec is the architectural Artifact-4 sibling of bug-diagnoses Bug E 4-artifact
+ *   design (hypothesis-1 API-payload probe); bug-diagnoses Bug E reciprocally cites this
+ *   spec at `../app/tests/e2e/bug-e-api-probe.spec.ts`.
+ *
  * Verdict classification (logged via [bug-e-api-probe.*] worker-stderr prefix):
  *   API_FULL    — SHARED_UUID + ADMIN_UUID both present, status='online':
  *                 hypothesis 1 (API-side RLS) RULED OUT; pivot to UI render path.
