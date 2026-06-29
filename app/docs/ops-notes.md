@@ -13,6 +13,7 @@ Current active cross-reference anchors:
 - `#anchor-collision-covenant` -- `## Anchor collision covenant` (added by `a6475165`)
 - `#optional-disable-inbucket-if-email-otp-lands-in-scope` -- `### Optional: Disable [inbucket] If Email-OTP Lands In Scope` (added by `9cc60d5`)
 - `#closure-cycle-audit-log-update-attempts-10-11-12-empirical-progress` -- `### Closure cycle audit log update: attempts 10-11-12 empirical progress on this host` (added by THIS COMMIT's `docs(ops-notes)` entry, paired with the appended Capture Attempt Log rows 10 + 11)
+- `#capture-v6-vs-playwright-discovery-scope-gap` -- `## Capture-v6 vs Playwright discovery scope gap` (added by `05b29d6`)
 
 # Operational notes
 
