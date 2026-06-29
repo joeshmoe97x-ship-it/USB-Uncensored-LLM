@@ -44,7 +44,7 @@ See `app/src/components/CameraGrid.tsx` end of CameraGrid useEffect.
 
 ### Cross-references
 
-- [`app/docs/ops-notes.md` § Capture-v6 vs Playwright discovery scope gap](../app/docs/ops-notes.md#capture-v6-vs-playwright-discovery-scope-gap) — Bug A's `b1b309d` fix (`supabase.auth.onAuthStateChange` listener in `app/src/components/CameraGrid.tsx`'s mount-time `useEffect` re-runs `api.getCameras().then(setCameras)` on `SIGNED_IN`/`TOKEN_REFRESHED`/`SIGNED_OUT`) is the same auth-state-listener commit canonically referenced in ops-notes § Capture-v6 table row #1 (`auth-rls.spec.ts` → T-RLS-11 `'b1b309d back-compat'`). The listener-attaches-to-mounting-`useEffect`-once pattern is the JWT-race regression lock-in for this Bug A closure and the rationale behind the table row's `'b1b309d back-compat'` annotation under the `admin-user JWT-pair observation in CONTEXT_BUNDLE` axis.
+- [`app/docs/ops-notes.md` § Capture-v6 vs Playwright discovery scope gap](../app/docs/ops-notes.md#capture-v6-vs-playwright-discovery-scope-gap) — Bug A's `b1b309d` fix (`supabase.auth.onAuthStateChange` listener in `app/src/components/CameraGrid.tsx`'s mount-time `useEffect` re-runs `api.getCameras().then(setCameras)` on `SIGNED_IN`/`TOKEN_REFRESHED`/`SIGNED_OUT`) is the same auth-state-listener commit canonically referenced in ops-notes § Capture-v6 table row #1 (`auth-rls.spec.ts` → T-RLS-11 `'b1b309d back-compat'`). The listener-attaches-to-mounting-`useEffect`-once pattern is the JWT-race regression lock-in for this Bug A closure and the rationale behind the table row's `'b1b309d back-compat'` annotation under `admin-user JWT-pair observation in CONTEXT_BUNDLE`.
 
 ---
 
@@ -108,7 +108,9 @@ informational, not contract. A second test
 (`rejection-path parity`) confirms the byte-identical contract under
 VIEWER's JWT as a smoke check that holds even when admin signin is broken.
 
-### Cross-references
+### Cross-references (Bug B)
+
+Renamed from `### Cross-references` for slug disambiguation per option (ii) of the convention at [`app/docs/ops-notes.md` § Anchor collision covenant](../app/docs/ops-notes.md#anchor-collision-covenant); Bug A stays at the canonical `#cross-references` slug for visual symmetry with the convention's tolerated-collision pattern.
 
 - [`app/docs/ops-notes.md` § Capture-v6 vs Playwright discovery scope gap](../app/docs/ops-notes.md#capture-v6-vs-playwright-discovery-scope-gap) — Bug B's `b1b309d` fix (back-compat destructure `const { action, payload: payloadRaw, ...rest } = await req.json(); const payload = payloadRaw ?? rest;` in `supabase/functions/admin-users/index.ts`) is the same back-compat commit canonically referenced in ops-notes § Capture-v6 table row #1 (`admin-users-shapes.spec.ts` → T-RLS-1..6 'b1b309d back-compat'). The probe spec's parse-path-parity sequence — nested-shape + flat-shape invocation between service-role cleanups, with the (a) HTTP 200 + (b) DB row insertion + (c) byte-identical response body verification triplet — is the regression lock-in for this Bug B closure and the rationale behind the table row's `'b1b309d back-compat'` annotation.
 
