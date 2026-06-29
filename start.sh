@@ -1,4 +1,11 @@
 #!/bin/bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `e12e211` (`Add full cross-platform architecture, setup scripts, and UI`, audit-chain adoption v2.3).
+# Tripod Closure: see `../../app/docs/ops-notes.md` #deferred-linux-portable-ollama-runtime-audit-chain-adoption (USB-delivery-layer — the deferred deferral this commit adopts).
+# Anchor Covenant (env-var): hardcodes Ollama runtime env-contract via `$OLLAMA_MODELS` + `$OLLAMA_HOME` + `$OLLAMA_TMPDIR` + `$OLLAMA_ORIGINS` + `$OLLAMA_HOST`; portable dir-resolution via `$USB_ROOT` + `$SHARED_DIR` + `$OLLAMA_RUNTIME` bootstrap.
+# Disambiguation: USB-portable Portable AI fast-web-chat launcher; Ollama readiness poll + Python chat_server.py invocation; intentionally NOT a systemd service.
+# Tag Chain: synced as of audit-cycle-v2.3.
+# ----------------------------------------------------------------------------
 # ===================================================
 #  Portable AI - Fast Web Chat (Linux)
 # ===================================================

@@ -1,4 +1,11 @@
 #!/bin/bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `e12e211` (`Add full cross-platform architecture, setup scripts, and UI`, audit-chain adoption v2.3).
+# Tripod Closure: see `../../app/docs/ops-notes.md` #deferred-linux-portable-ollama-runtime-audit-chain-adoption (USB-delivery-layer — the deferred deferral this commit adopts).
+# Anchor Covenant (CLI): depends on shared `$CONFIG_QUERY` python output env-var-namespacing the model catalog (MODEL_NUMS[] + MODEL_{NAME,FILE,URL,MINB,LOCAL,PROMPT,LABEL,BADGE,SIZE}_<N>); the catalog contract is the load-bearing CLI-key anchor.
+# Disambiguation: USB-portable multi-model installer; 7-step orchestrator covering model-select + vendor-assets + GGUF-download + Modelfile-gen + Ollama-runtime tar-extract + model-import.
+# Tag Chain: synced as of audit-cycle-v2.3.
+# ----------------------------------------------------------------------------
 # ================================================================
 #  PORTABLE UNCENSORED AI - Linux Setup Script
 # ================================================================
