@@ -2,6 +2,8 @@
 
 To prevent GFM auto-numbering collisions (where duplicate heading slugs get `-1`/`-2` suffixes, breaking prior cross-references), any new heading whose title slug-matches an established anchor MUST be made slug-distinct. Maintainers must add new anchors to this inventory when introduced.
 
+Cross-heading duplicates (same slug under different H2 parents, or repeated at H2/H3/H4 levels across the docs corpus) are tolerated in this codebase if NO cross-reference links target the duplicated slug directly. GFM renderers (GitHub, mkdocs, docusaurus) auto-route collisions via parent H2 prefix at render time, so such H3s/H4s don't break in-corpus navigation. The documented convention when adding a new heading whose slug duplicates an existing one is: either (i) link via the parent H2 prefix explicitly in any cross-references (e.g., `[...](#bug-a-—-cameragrid-shows-zero-camera-cards-for-admin)` rather than `[...](#cross-references)`), or (ii) append a parenthetical to the heading title for explicit slug disambiguation (e.g., `### Cross-references (Bug B)` → `#cross-references-bug-b`). The `#cross-references` row at the end of this inventory is the canonical example of the tolerated form (NOT a collision that needs to be fixed).
+
 Current active cross-reference anchors:
 
 - `#re-pointing-the-bundle` -- `## Re-pointing the bundle` (added by `67cb5bc`)
@@ -14,6 +16,7 @@ Current active cross-reference anchors:
 - `#optional-disable-inbucket-if-email-otp-lands-in-scope` -- `### Optional: Disable [inbucket] If Email-OTP Lands In Scope` (added by `9cc60d5`)
 - `#closure-cycle-audit-log-update-attempts-10-11-12-empirical-progress` -- `### Closure cycle audit log update: attempts 10-11-12 empirical progress on this host` (added by THIS COMMIT's `docs(ops-notes)` entry, paired with the appended Capture Attempt Log rows 10 + 11)
 - `#capture-v6-vs-playwright-discovery-scope-gap` -- `## Capture-v6 vs Playwright discovery scope gap` (added by `05b29d6`)
+- `#cross-references` -- cosmetic duplicate H3/H4 slug (added by `c4a3444`'s v1.4 followup audit): 5 occurrences across `docs/bug-diagnoses.md` (Bug A + Bug B `###`) + `app/docs/ops-notes.md` (1 H2 + 2 H3 + 1 H4-level instance) all under distinct H2 parents; zero functional impact (no in-doc or cross-doc link targets this slug directly); tolerated per the cross-heading-duplicate convention documented above.
 
 # Operational notes
 
