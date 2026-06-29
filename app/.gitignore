@@ -40,3 +40,15 @@ supabase/.temp/cli-latest
 # Defensive patterns added during capture-v6 idempotency work
 supabase/.branches/
 *.bak-pre-tidy
+
+# Defensive pattern: scrub_and_build.py double-/app prefix remediation. Earlier
+# versions of scrub_and_build.py constructed STUB as
+# `CAM / 'app' / 'tests' / 'e2e' / '_baseline-run.json'` where CAM = Path(CAMARAS)
+# and capture-v6.sh L13-L14 exports CAMARAS="$HOME/USB-Uncensored-LLM/Linux/app"
+# (CAMARAS already contains /app). The double-prefix produced the dead path
+# `app/tests/e2e/_baseline-run.json` directly under a nested `app/` directory
+# which capture-v6.sh's `git add $STUB_REL` (STUB_REL="tests/e2e/_baseline-run.json")
+# could not see, FATAL'ing exit 37 NOTHING_STAGED after bash's
+# `git status --porcelain | grep '^[AM]'` matched zero entries. Pattern suppresses
+# the dead path so a future regression does not re-surface as diagnostic noise.
+app/

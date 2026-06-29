@@ -154,7 +154,17 @@ def scrub_string(s):
 
 CAM = Path(os.environ['CAMARAS'])
 BL = Path('/tmp/build-log')
-STUB = CAM / 'app' / 'tests' / 'e2e' / '_baseline-run.json'
+# STUB path. capture-v6.sh L13-L14 exports CAMARAS=$PROJECT_DIR where
+# PROJECT_DIR="$HOME/USB-Uncensored-LLM/Linux/app" -- the /app segment
+# is ALREADY in CAM. Earlier versions of this script prefixed another
+# 'app/' here, producing $PROJECT_DIR/app/app/tests/e2e/_baseline-run.json
+# which capture-v6.sh's Phase M `git add $STUB_REL` (where STUB_REL is
+# 'tests/e2e/_baseline-run.json' without an app/ prefix) would not see.
+# Result: capture completed without committing, then bash's
+# `git status --porcelain | grep '^[AM]'` correctly matched zero entries
+# and FATAL'd with exit 37 NOTHING_STAGED. Drop the redundant 'app/' so
+# the python-side write path matches the bash-side STUB path invariant.
+STUB = CAM / 'tests' / 'e2e' / '_baseline-run.json'
 
 
 def fail(msg, code=99):
