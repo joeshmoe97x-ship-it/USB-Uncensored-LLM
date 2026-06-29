@@ -85,9 +85,7 @@ test.describe('Supabase auth + RLS isolation', () => {
 
     const env = readSupabaseEnv();
     const admin = createServiceClient(env);
-    // Fixtures (viewer auth.users row + Shared Cam camera_access grant) are
-    // installed at cold-start by tests/e2e/global-setup.ts's ensureViewerAuthRow
-    // + Phase B.5 seed.sql replay respectively. Informational check only.
+    // Fixtures installed at cold-start by tests/e2e/global-setup.ts's ensureViewerAuthRow + supabase/seed.sql (Phase B.5 replay); informational only.
     const { data: existingViewer } = await admin
       .from('profiles').select('id, role').eq('email', VIEWER_EMAIL).maybeSingle();
     console.log(`[T-RLS-1 viewer] fixtures_present=${!!existingViewer?.id} viewer.role=${existingViewer?.role ?? 'none'}`);
