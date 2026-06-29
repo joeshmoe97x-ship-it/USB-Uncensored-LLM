@@ -1,84 +1,30 @@
 /**
  * Bug E — strict-first API-payload probe (hypothesis 1 of 3 in Bug E diagnostic).
  *
- * Per docs/bug-diagnoses.md Bug E "Fix path TBD" subsection, this probe is
- * the FIRST step in narrowing the failure surface. The failing T-RLS-11
- * locator test (auth-rls.spec.ts:27, `viewer cannot see admin private
- * cameras; can see shared ones`) finds NO `data-testid='camera-card'`
- * matching 'Shared Cam' after admin sign-in. Without ground-truth data on
- * what the admin client actually receives from RLS, every subsequent fix
- * guess is uninformed.
+ * Architecture rationale + capture-cycle non-inclusion + two-layer defense
+ * (testIgnore + capture-v6 hardcoded spec list) + on-demand invocation:
+ *   app/docs/ops-notes.md § Capture-v6 vs Playwright discovery scope gap
+ *   (anchor #capture-v6-vs-playwright-discovery-scope-gap).
  *
- * This spec answers hypothesis 1 DIRECTLY: as a freshly-authenticated
- * admin@omnisight.local, what does the PostgREST `cameras` SELECT
- * (Supabase REST) actually return?
+ * Verdict classification (logged via [bug-e-api-probe.*] worker-stderr prefix):
+ *   API_FULL    — SHARED_UUID + ADMIN_UUID both present, status='online':
+ *                 hypothesis 1 (API-side RLS) RULED OUT; pivot to UI render path.
+ *   API_PARTIAL — at least one UUID missing or wrong-status: hypothesis 1
+ *                 CONFIRMED, narrow target.
+ *   API_EMPTY   — row_count == 0: hypothesis 1 CONFIRMED; full admin-side failure.
+ * User sees `[bug-e-api-probe.*verdict=...]` in `/tmp/build-log/run{1,2}.stderr`.
  *
- *   - row_count >= 2 AND SHARED_UUID and ADMIN_UUID both present with
- *     status='online': hypothesis 1 (API-side RLS) is RULED OUT — the
- *     failure is on the UI render path (hypothesis 2-narrowed: silent
- *     render-guard early-return, or hypothesis 3: auth-JWT sync),
- *     and we pivot to CameraGrid.tsx or signin-state debugging.
+ * Auth/PostgREST invariant (NOT in ops-notes; load-bearing):
+ *   createAnonClient uses persistSession: false, so admin sign-in on the anon
+ *   client would re-fire as anon, not admin. We hit PostgREST directly via
+ *   fetch with the dual-header convention (apikey + `Authorization: Bearer
+ *   <admin jwt>`) — mirrors the adminInvoke pattern in helpers.ts.
  *
- *   - row_count = 0 OR row missing SHARED_UUID/ADMIN_UUID:
- *     hypothesis 1 (API-side RLS) CONFIRMED — Bug E's root cause is
- *     that the admin's `is_admin()` USING clause is not promoting rows
- *     for this anon-client context, and the fix belongs in the
- *     auth-JWT / profiles.role / RLS USING-clause surface (hypothesis 3).
+ * UUID-stable verdict matching: SHARED_UUID / ADMIN_UUID are public.cameras
+ * PKs (stable across seed renames); name strings are human-readable cross-checks.
  *
- * Implementation note — auth context:
- *   helpers.ts's `createAnonClient` configures `persistSession: false`, so
- *   any `signInWithPassword` call on a client returned by that helper
- *   discards the admin session before the JWT can be re-used. As a result,
- *   a downstream `anonClient.from('cameras').select('*')` would re-fire as
- *   the anon role, NOT as admin — collapsing the probe verdict to
- *   API_EMPTY irrespective of the actual admin-side payload. To preserve
- *   admin context we instead use `fetch()` directly with the
- *   PostgREST dual-header convention:
- *     - Authorization: Bearer <admin's JWT>  (drives auth.uid() +
- *       JWT-resident role claim used by is_admin() / RLS USING clause)
- *     - apikey: <VITE_SUPABASE_ANON_KEY>      (PostgREST requires both,
- *                                              apikey identifies project,
- *                                              Authorization identifies user)
- *   This mirrors the adminInvoke pattern in helpers.ts (which already
- *   uses fetch + Bearer for the Edge Function admin-users case) and is
- *   what `supabase-js` would do internally if the session were persisted.
- *
- * UUID-stable verdict matching:
- *   Verdict members use SHARED_UUID / ADMIN_UUID (table PKs) rather than
- *   name strings; both are stable across seed renames. Name matching is
- *   retained only as a human-readable cross-check surfaced in the verdict
- *   string.
- *
- * Output goes to worker stderr (`process.stderr.write`) with the
- * `[bug-e-api-probe.*]` prefix so a single
- *   grep '\\[bug-e-api-probe' /tmp/build-log/run*.stderr
- * surfaces the entire probe trace regardless of pass/fail outcome. This
- * builds on the capture-v6 stderr-routing pattern added in commit 0706252.
- *
- * INTENTIONALLY OMITTED from capture-v6.sh's Phase F + G spec list (the
- * regression cycle) AND from generic `npx playwright test` glob discovery
- * via the `testIgnore` rule in `app/playwright.config.ts`
- * (`'**/tests/e2e/bug-e-api-probe.spec.ts'`). The two exclusion layers are
- * independent and defense-in-depth: the hardcoded 3-spec list in capture-v6
- * blocks the probe from the regression cycle; testIgnore blocks it from
- * generic Playwright discovery. The probe emits `[bug-e-api-probe.*]`
- * worker-stderr verdict lines (`verdict=API_FULL` / `API_PARTIAL` /
- * `API_EMPTY`); these are verifier shapes NOT assertion shapes that
- * capture-v6.sh's `check_pw_unexpected` gate tolerates, so including the
- * probe in Phase F+G would mis-flag the regression cycle as FATAL even
- * when the probe itself passed. Running this spec TWICE per capture cycle
- * would otherwise pollute `_baseline-run.json` with a non-regression row,
- * distorting the `captured_at` aggregate counts.
- *
- * Playwright 1.61 honors `testIgnore` against glob discovery but bypasses
- * it for explicit positional CLI invocations — so the probe remains
- * contributor-invocable on demand:
+ * On-demand invocation (testIgnore bypassed by explicit positional CLI):
  *   npx playwright test tests/e2e/bug-e-api-probe.spec.ts --reporter=line
- *
- * To execute the probe against the live local stack, run capture-v6.sh and
- * BEFORE its trap-fires cleanup, re-export env from
- * /tmp/build-log/sb-status.json + VITE_* + SERVICE_ROLE (Phase D set them),
- * then run the explicit-invocation command above.
  */
 import { test } from '@playwright/test';
 import {
