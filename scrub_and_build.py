@@ -164,16 +164,22 @@ if not CAMARAS:
 CAM = Path(CAMARAS)
 BL = Path('/tmp/build-log')
 # STUB path. capture-v6.sh L13-L14 exports CAMARAS=$PROJECT_DIR where
-# PROJECT_DIR="$HOME/USB-Uncensored-LLM/Linux/app" -- the /app segment
-# is ALREADY in CAM. Earlier versions of this script prefixed another
-# 'app/' here, producing $PROJECT_DIR/app/app/tests/e2e/_baseline-run.json
-# which capture-v6.sh's Phase M `git add $STUB_REL` (where STUB_REL is
-# 'tests/e2e/_baseline-run.json' without an app/ prefix) would not see.
-# Result: capture completed without committing, then bash's
-# `git status --porcelain | grep '^[AM]'` correctly matched zero entries
-# and FATAL'd with exit 37 NOTHING_STAGED. Drop the redundant 'app/' so
-# the python-side write path matches the bash-side STUB path invariant.
-STUB = CAM / 'tests' / 'e2e' / '_baseline-run.json'
+# PROJECT_DIR="$HOME/Downloads/camaras" (does NOT end in /app).
+# capture-v6.sh's Phase M uses STUB_REL="app/tests/e2e/_baseline-run.json"
+# (WITH app/ prefix) for `git add` -- so the git-trackable canonical path
+# is $PROJECT_DIR/app/tests/e2e/_baseline-run.json. Prepending 'app/' in
+# the python-side write keeps STUB aligned to STUB_REL; without this, the
+# python writes to $PROJECT_DIR/tests/e2e/_baseline-run.json (top-level,
+# git-untracked) and Phase M's `git status --porcelain | grep '^[AM]'`
+# correctly matches zero entries -> NOTHING_STAGED -> exit 37. The
+# regression guard below was originally written for an older capture-v6.sh
+# variant where PROJECT_DIR ended in /app AND STUB_REL had NO /app/ prefix
+# (so an extra 'app/' segment produced /app/app/); the guard still catches
+# any future find-and-replace that reintroduces the legacy /app/app/ bug
+# pattern. Reproduction of the original NOTHING_STAGED pathology is recorded
+# in app/docs/ops-notes.md and the audit-gap section documents the canonical
+# recovery via the path-bug fix.
+STUB = CAM / 'app' / 'tests' / 'e2e' / '_baseline-run.json'
 # Regression guard (assertStubsUnderCamScript): fail-fast at module load if a
 # future find-and-replace reintroduces the redundant `/app` prefix. CAMARAS
 # already ends in `/app`; STUB must NOT contain `/app/app/` or capture-v6.sh's
