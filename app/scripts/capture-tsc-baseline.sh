@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `cf47355` (`docs(ops-notes): track tsc-baseline.txt as forward-durable TypeScript archeology artifact`, audit-chain adoption v2.0).
+# Tripod Closure: see `../../docs/ops-notes.md` #bug-e-lock-in-workflow (TS2345 baseline followup + Post-co-mingle re-verification chain — the zero-byte signal this script produces is itself a doc-side anchor).
+# Anchor Covenant (CLI): strictly depends on `npx --no-install tsc --noEmit -p tsconfig.app.json` exit-code semantics (exit=0 + zero stdout/stderr → zero-byte canonical signal).
+# Disambiguation: typescript-baseline re-capture tool, idempotent; not the Playwright capture-v6 / not the audit-chain covenant validator.
+# Tag Chain: synced as of audit-cycle-v2.0.
+# ----------------------------------------------------------------------------
 # capture-tsc-baseline.sh
 #
 # Idempotent re-capture of the TypeScript regression baseline.
