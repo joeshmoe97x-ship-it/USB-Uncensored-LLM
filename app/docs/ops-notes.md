@@ -587,29 +587,29 @@ The useEffect itself isn't the cause — it's just the call site where the narro
 
 The closure cycle's only CameraGrid.tsx touch was line 132 (the `BRAND[cam.brand as keyof typeof BRAND] ?? FALLBACK` lookup), which is the regression-lock-in line for Bug E. The TS2345 errors at L58 + L71 are in the `useEffect` body (L54-L96) and the `onAuthStateChange` callback (L67-L73), both well above L132. The `api.getCameras` + `withLegacyCamera` chain in `src/lib/api.ts` is unchanged across the closure cycle's commits. The errors are pre-existing in the codebase as of HEAD (`37ae861` + `c2ee264` lineage); the tsc sanity check in the closure cycle's [D] section merely surfaced them.
 
-#### Proposed one-line fix (out of scope for this audit log entry)
+#### Landed at commit `809e411`
 
-Change `src/lib/api.ts:48` from:
+The proposed one-line fix was applied as a deferred followup commit `809e411 fix(types): widen withLegacyCamera generic from {id,ip?} to Camera` (author: `bgdaddy <bgdaddy@bgdaddy.local>`; date: `2026-06-28T18:19:52-04:00`). Verbatim diff:
 
-```typescript
-const withLegacyCamera = generateLegacyWrapper<{ id: string; ip?: string }>({ ... });
+```diff
+-const withLegacyCamera = generateLegacyWrapper<{ id: string; ip?: string }>({
++const withLegacyCamera = generateLegacyWrapper<Camera>({
+   device_id:  'id',
+   ip_address: 'ip',
+ });
 ```
 
-to:
+**Verification at landed state** (run `cd app && npx tsc --noEmit -p tsconfig.app.json` from the repo root): `exit=0`, zero errors. The two TS2345 lines at `CameraGrid.tsx:58` + `:71` are gone; no new errors introduced anywhere in the `withLegacyCamera` invocation chain (`src/lib/api.ts#camerasApi.list` / `list_raw` / `create` / `update` / `getCamera` + the `CameraGrid.tsx` `useEffect` + `onAuthStateChange` call sites). Runtime behavior is unchanged: `generateLegacyWrapper` only defines `enumerable:true` property-descriptor getters per the implementation comment at `app/src/lib/api.ts#L24`, never mutating values, so the widened outer `T extends object` argument (`Camera` instead of the prior narrow `{ id: string; ip?: string }`) preserves the `Object.defineProperties(target, descriptors)` idempotent semantics byte-for-byte.
 
-```typescript
-const withLegacyCamera = generateLegacyWrapper<Camera>({ ... });
-```
+**Archived baseline verification** (forward-durable archeology): the post-`809e411` codebase's `npx tsc --noEmit -p tsconfig.app.json` invocation was captured verbatim to `app/docs/tsc-baseline.txt` (a self-tracked tsc-baseline file, sibling to `_baseline-run.json` which captures the playwright regression contract the latter auto-commit produced). The baseline file is zero-byte because `tsc` had no output (`exit=0` + zero errors) — intentionally-empty `>`-redirect is the canonical signal that the audit chain is clean. Ground-truth citation chain for this audit log entry: parent capture cycle auto-commit `4b10cf1` (T-RLS-1..13 baseline) → followup type-widening `809e411` → archived TypeScript-baseline committed in the same change-set as this str_replace. Re-capture `tsc-baseline.txt` after any future type-only commit (e.g. the analog widenings of `generateLegacyWrapper<SecurityEvent>` / `<Evidence>` flagged in the audit-followup chain) to refresh the in-place archeology forward of `809e411`.
 
-The wrapper then preserves `Camera` shape through `.map(withLegacyCamera)`, `camerasApi.list` returns `Camera[]` as intended, and both L58 + L71 TS2345 errors disappear. This is a single-line type-only change; runtime behavior is unchanged (`generateLegacyWrapper` only defines property-descriptor getters, never mutates values).
+**Post-co-mingle re-verification** (forward-extension of the citation chain): the chained-widen-type commit `dac0f47 fix(types): widen withLegacyEvent generic to SecurityEvent` (author `ops-ci <ops@camaras.local>`) co-mingled both the `<SecurityEvent>` widening AND the `<Evidence>` widening in a single change-set atop `809e411` (the per-fix-split protocol note notwithstanding; both widenings are byte-equal to the `809e411` precedent: type-only, zero runtime change, with `<Evidence>` even type-tightening `meta: unknown → EvidenceMeta` as flagged in the prior audit). `app/docs/tsc-baseline.txt` was re-captured post-`dac0f47` and remains zero-byte (canonical-clean signal preserved across the chain; `npx tsc --noEmit -p tsconfig.app.json` exit=0 in 3s). Extended citation chain: parent capture cycle `4b10cf1` (T-RLS-1..13 baseline) → Camera widening `809e411` → SecurityEvent + Evidence co-mingle `dac0f47` → re-captured tsc-baseline.txt retained zero-byte post-`dac0f47`.
 
-**Verify**: `npx tsc --noEmit --project tsconfig.app.json` reports 0 errors after the change. The two TS2345 lines at `CameraGrid.tsx:58` + `:71` disappear; no other errors are introduced. If new errors surface (e.g. due to a stricter inference downstream), they are scope-creep from this fix and should land in a followup commit, not this one.
+#### Why the audit log records the history even though the fix is landed
 
-#### Why the audit log records it instead of fixing it
-
-- The closure cycle's goal was Bug E lock-in (BRAND TypeError regression). Mixing in a Camera-type fix would conflate two unrelated typing concerns.
-- The TS2345 errors are warning-level (no runtime impact — the `.map(withLegacyCamera)` returns a structurally-compatible object at runtime, just narrower at the type level). The closure cycle's empirical PASS at 0 pageerrors + divergent-card-visible milestones confirms the runtime is healthy.
-- A separate, deliberate commit with its own review path is the right shape for the type-only fix. The next maintainer can take the one-line change verbatim from the snippet above.
+- The closure cycle's goal was Bug E lock-in (BRAND TypeError regression). Mixing in a Camera-type fix would have conflated two unrelated typing concerns; deferring to a separate commit (`809e411`) preserved the closure cycle's empirical-run gating from scope-creep and gave the type-only fix its own review + revert path.
+- Tracking the followup here keeps the archeology self-contained: a future archaeologist reading this H3 in 2026-Q4 can audit the closure cycle's `37ae861 + c2ee264` baseline → the `34af161` closure-cycle fixes → the `809e411` followup widens, all from a single ops-notes reference, without consulting git log for the cross-commit narrative.
+- The TS2345 errors at audit time were warning-level (no runtime impact — the prior `.map(withLegacyCamera)` returned a structurally-compatible object at runtime, just narrower at the type level), and the closure cycle's empirical PASS at 0 pageerrors + divergent-card-visible milestones confirmed the runtime had always been healthy; the deferred fix's value was purely type-correctness + downstream call-site inference, not runtime correctness.
 
 #### Cross-references
 
@@ -815,16 +815,25 @@ find app/tests -name '*.spec.ts' -type f | sort
 grep -nE '^test\(' app/tests/e2e/bug-e-api-probe.spec.ts
 ```
 
-### Resolution intent (no fix required)
+### Resolution intent (tooling-layer fix adopted)
 
-The audit gap is closed at the documentation layer: this section enumerates the deliberate divergence so a future contributor running `npx playwright test` (and seeing a 14-test run) can reconcile the count against capture-v6's 13-test baseline without assuming a regression. The 1-test delta is the architectural Artifact-4 sibling, not a missed spec.
+The audit gap is closed at **both** layers (docs + tooling) as of the commit that adds the `testIgnore` rule to `app/playwright.config.ts`:
 
-A defensive `testIgnore` rule in `playwright.config.ts` (`testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']`) WOULD eliminate the gap fully but is **not recommended** for the current code — adding it obscures the probe's one-shot usage pattern documented in the spec's own JSDoc and removes a contributor-facing affordance. **Leave as-is.**
+- **Tooling layer** — `app/playwright.config.ts` carries `testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']` so generic `npx playwright test` (no spec-list arg) does NOT discover the probe via glob scan. The 14-test-vs-13-test delta is gone at the tooling layer.
+- **Docs layer** — captured above (this entire H2 section) for the contributor who needs to understand the architectural rationale (Artifact-4 sibling, four-artifact design context, etc.).
+- **Contributor-facing affordance preserved** — Playwright 1.61 honors `testIgnore` against glob discovery but bypasses it for explicit positional CLI invocations. The probe remains invocable on demand:
+  ```bash
+  npx playwright test tests/e2e/bug-e-api-probe.spec.ts --reporter=line
+  ```
+
+**Defense in depth**: capture-v6.sh's hardcoded Phase F + G 3-spec list was already enough to exclude the probe from the regression cycle; testIgnore is load-bearing ONLY for the generic `npx playwright test` discovery path. The two layers reinforce each other without redundancy — reverting either layer leaves the other as a safety net, neither alone fully closes the gap.
+
+The probe's own JSDoc (`tests/e2e/bug-e-api-probe.spec.ts`) was updated in the same commit to cite both exclusion layers + the explicit-invocation pattern. Regression of either layer surfaces visibly: removing testIgnore would re-expose the 14-test discovery; removing the hardcoded 3-spec list would push the probe into capture-v6's regression cycle (where its `verdict=API_FULL|API_PARTIAL|API_EMPTY` worker-stderr shape would mis-flag as FATAL under the `check_pw_unexpected` gate that tolerates only `auth-rls.spec.ts:27 timedOut`).
 
 ### Cross-references
 
 - `app/tests/e2e/bug-e-api-probe.spec.ts` — the excluded diag spec (top-of-file JSDoc: INTENTIONAL non-inclusion)
-- `app/playwright.config.ts` — `testDir: './tests/e2e'`, no `testIgnore` (audit gap is by design)
+- `app/playwright.config.ts` — `testDir: './tests/e2e'`, `testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']` (audit gap closed at tooling layer; see [Resolution intent](#resolution-intent-tooling-layer-fix-adopted) above)
 - `app/tests/e2e/_tools/capture-baseline/capture-v6.sh` — Phase F + G hardcoded 3-spec list (`tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts tests/e2e/bug-e-brand-divergence.spec.ts`); intentional filter, not a glob
 - [`Bug E lock-in workflow`](#bug-e-lock-in-workflow) H2 above — the four-artifact design rationale (this section is its deliberate Artifact-4 sibling)
 - `app/tests/e2e/_baseline-run.json` (`f958606` at HEAD) — canonical capture-v6 artefact; `.aggregate.total_tests == 13` reflects the curated spec list, NOT Playwright's generic discovery
