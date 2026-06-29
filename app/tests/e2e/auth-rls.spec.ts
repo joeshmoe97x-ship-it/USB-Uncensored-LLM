@@ -63,8 +63,7 @@ test.describe('Supabase auth + RLS isolation', () => {
    * @scenario positive
    * @description viewer sign-in: sees SHARED_CAM under camera_access grant;
    *              does NOT see PRIVATE_CAM under RLS
-   * @prerequisites viewer session (ensureViewerAuthRow global setup) + Shared Cam
-   *              camera_access grant (Phase B.5 seed.sql replay)
+   * @prerequisites viewer session; Shared Cam camera_access grant
    *
    * Splits out of the prior monolithic T-RLS-1 to give the viewer a hermetic
    * browser execution context (no in-test sign-out hop) so a state bleed from
