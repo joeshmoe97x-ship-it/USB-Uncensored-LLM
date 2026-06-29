@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `935d9dc` (single-commit file, audit-chain adoption v1.10).
+# Tripod Closure: see `../docs/ops-notes.md` ## Operational notes (host-shell tooling workflow).
+# Anchor Covenant (Regex): strictly bonds to `/tmp/test*_body.ts` file globs (find -maxdepth 3 -type f -name 'test*_body.ts' ! -path '*/node_modules/*').
+# Disambiguation: pre-commit hook fires only on `git commit`; bypass via `--no-verify` is git-side, not script-side.
+# Tag Chain: synced with audit-cycle tag chain.
+# ----------------------------------------------------------------------------
 # Fail pre-commit if /tmp/test*_body.ts staging mirrors exist.
 # Staging mirrors invite drift between /tmp/ draft copies and the live
 # camaras/tests/e2e/<spec>.ts; once the same content lands in the spec
