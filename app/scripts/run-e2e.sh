@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
+# Provenance: introduced by `935d9dc` (single-commit file, audit-chain adoption v1.9).
+# Tripod Closure: see `../../docs/ops-notes.md` #capture-v6-vs-playwright-discovery-scope-gap (Capture-v6 orchestrator).
+# Anchor Covenant (jq-fallback): keys `API URL` / `anon key` / `service_role key` from `supabase status --json` (with .api.* fallbacks).
+# Disambiguation: 3-supabase-config-keys required; no script variants.
+# Tag Chain: synced as of audit-cycle-v1.9.
+# ----------------------------------------------------------------------------
 # End-to-end smoke test orchestrator for Supabase auth + RLS path.
 #
 #   1. `supabase start`    — boot local Supabase stack under Docker.
