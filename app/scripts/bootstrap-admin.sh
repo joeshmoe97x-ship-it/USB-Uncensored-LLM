@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `935d9dc` (single-commit file, audit-chain adoption v1.8).
+# Tripod Closure: see `docs/bug-diagnoses.md` #bug-c (admin profile.role trigger race on capture-v6 cold-start).
+# Anchor Covenant (CLI): depends on `supabase status --json` keys `API_URL` + `SERVICE_ROLE_KEY`.
+# Disambiguation: canonical execution path defaults to admin@omnisight.local; no script variants.
+# Tag Chain: synced as of audit-cycle-v1.8.
+# ----------------------------------------------------------------------------
 # Bootstrap the first admin user for the local Supabase stack.
 # Reads API_URL + SERVICE_ROLE_KEY from `supabase status --output json`.
 # Service-role key NEVER echoed. Safe to gitignore the .env it sources from.
