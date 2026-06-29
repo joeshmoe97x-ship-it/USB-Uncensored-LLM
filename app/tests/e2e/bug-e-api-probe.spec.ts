@@ -55,17 +55,30 @@
  * surfaces the entire probe trace regardless of pass/fail outcome. This
  * builds on the capture-v6 stderr-routing pattern added in commit 0706252.
  *
- * INTENTIONAL non-inclusion in capture-v6.sh regression-test list.
- * capture-v6.sh's Phase F + Phase G use HARDCODED file lists
- * (`tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts`)
- * rather than a glob, so this file is excluded by default. Running this
- * spec TWICE per capture cycle would otherwise pollute
- * `_baseline-run.json` with a non-regression row, distorting the
- * captured_at aggregate counts. To execute the probe against the live
- * local stack, run capture-v6.sh and BEFORE its trap-fires cleanup,
- * re-export env from /tmp/build-log/sb-status.json + VITE_* + SERVICE_ROLE
- * (Phase D set them), then:
+ * INTENTIONALLY OMITTED from capture-v6.sh's Phase F + G spec list (the
+ * regression cycle) AND from generic `npx playwright test` glob discovery
+ * via the `testIgnore` rule in `app/playwright.config.ts`
+ * (`'**/tests/e2e/bug-e-api-probe.spec.ts'`). The two exclusion layers are
+ * independent and defense-in-depth: the hardcoded 3-spec list in capture-v6
+ * blocks the probe from the regression cycle; testIgnore blocks it from
+ * generic Playwright discovery. The probe emits `[bug-e-api-probe.*]`
+ * worker-stderr verdict lines (`verdict=API_FULL` / `API_PARTIAL` /
+ * `API_EMPTY`); these are verifier shapes NOT assertion shapes that
+ * capture-v6.sh's `check_pw_unexpected` gate tolerates, so including the
+ * probe in Phase F+G would mis-flag the regression cycle as FATAL even
+ * when the probe itself passed. Running this spec TWICE per capture cycle
+ * would otherwise pollute `_baseline-run.json` with a non-regression row,
+ * distorting the `captured_at` aggregate counts.
+ *
+ * Playwright 1.61 honors `testIgnore` against glob discovery but bypasses
+ * it for explicit positional CLI invocations — so the probe remains
+ * contributor-invocable on demand:
  *   npx playwright test tests/e2e/bug-e-api-probe.spec.ts --reporter=line
+ *
+ * To execute the probe against the live local stack, run capture-v6.sh and
+ * BEFORE its trap-fires cleanup, re-export env from
+ * /tmp/build-log/sb-status.json + VITE_* + SERVICE_ROLE (Phase D set them),
+ * then run the explicit-invocation command above.
  */
 import { test } from '@playwright/test';
 import {
