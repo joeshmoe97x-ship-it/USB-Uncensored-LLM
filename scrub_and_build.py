@@ -154,8 +154,10 @@ def scrub_string(s):
 
 # Guard: missing-CAMARAS friendly SystemExit. capture-v6.sh L14 sets CAMARAS
 # from $PROJECT_DIR before launching us; manual invocation without that env
-# raises raw KeyError otherwise. Fail-fast with a clear message.
-CAMARAS = os.environ.get('CAMARAS')
+# raises raw KeyError otherwise. Fail-fast with a clear message. The .strip()
+# wash catches whitespace-only CAMARAS (e.g., "   ") which Python truthiness
+# would otherwise let bypass the falsy check.
+CAMARAS = os.environ.get('CAMARAS', '').strip()
 if not CAMARAS:
     raise SystemExit(f'FATAL: scrub_and_build requires CAMARAS env var '
                      f'(capture-v6.sh L14 sets it via export CAMARAS=$PROJECT_DIR)')
