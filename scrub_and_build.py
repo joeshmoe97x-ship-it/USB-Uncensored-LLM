@@ -152,7 +152,14 @@ def scrub_string(s):
 
 
 
-CAM = Path(os.environ['CAMARAS'])
+# Guard: missing-CAMARAS friendly SystemExit. capture-v6.sh L14 sets CAMARAS
+# from $PROJECT_DIR before launching us; manual invocation without that env
+# raises raw KeyError otherwise. Fail-fast with a clear message.
+CAMARAS = os.environ.get('CAMARAS')
+if not CAMARAS:
+    raise SystemExit(f'FATAL: scrub_and_build requires CAMARAS env var '
+                     f'(capture-v6.sh L14 sets it via export CAMARAS=$PROJECT_DIR)')
+CAM = Path(CAMARAS)
 BL = Path('/tmp/build-log')
 # STUB path. capture-v6.sh L13-L14 exports CAMARAS=$PROJECT_DIR where
 # PROJECT_DIR="$HOME/USB-Uncensored-LLM/Linux/app" -- the /app segment
@@ -165,6 +172,15 @@ BL = Path('/tmp/build-log')
 # and FATAL'd with exit 37 NOTHING_STAGED. Drop the redundant 'app/' so
 # the python-side write path matches the bash-side STUB path invariant.
 STUB = CAM / 'tests' / 'e2e' / '_baseline-run.json'
+# Regression guard (assertStubsUnderCamScript): fail-fast at module load if a
+# future find-and-replace reintroduces the redundant `/app` prefix. CAMARAS
+# already ends in `/app`; STUB must NOT contain `/app/app/` or capture-v6.sh's
+# `git add $STUB_REL` (STUB_REL="tests/e2e/_baseline-run.json") will silently
+# skip the file and FATAL with exit 37 NOTHING_STAGED.
+if '/app/app/' in str(STUB):
+    raise SystemExit(f'FATAL: scrub_and_build STUB invariant violated: '
+                     f'CAMARAS={str(CAM)!r} + STUB path {str(STUB)!r} contains '
+                     f'redundant /app; drop the extra "app/" segment.')
 
 
 def fail(msg, code=99):
