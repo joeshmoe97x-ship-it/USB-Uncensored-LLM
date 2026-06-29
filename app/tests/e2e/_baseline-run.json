@@ -8,9 +8,9 @@
     "dropped_in_run2_count": 0,
     "runner_errors_run1_count": 0,
     "runner_errors_run2_count": 0,
-    "total_duration_ms_canonical_sum": 65519,
-    "total_duration_ms_run1_first_sum": 65519,
-    "total_duration_ms_run2_first_sum": 65018,
+    "total_duration_ms_canonical_sum": 65047,
+    "total_duration_ms_run1_first_sum": 65047,
+    "total_duration_ms_run2_first_sum": 65069,
     "total_tests": 12
   },
   "capture_protocol": {
@@ -39,7 +39,7 @@
     "supabase_start": "`supabase start` with vector + studio disabled per `supabase/config.toml` (commit 5c1a0c0)",
     "web_server": "`npm run dev` (Vite) in background before playwright runs; killed after both"
   },
-  "captured_at": "2026-06-29T00:58:22Z",
+  "captured_at": "2026-06-29T01:09:33Z",
   "dropped_in_run1": [],
   "dropped_in_run2": [],
   "node_runtime": {
@@ -65,9 +65,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 694,
-      "duration_run1_first_ms": 694,
-      "duration_run2_first_ms": 494,
+      "duration_ms": 614,
+      "duration_run1_first_ms": 614,
+      "duration_run2_first_ms": 541,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -81,7 +81,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity for delete_user: nested + flat both delete fixture users with byte-identical success",
       "variance_ok": true,
-      "variance_ratio": 1.4
+      "variance_ratio": 1.13
     },
     {
       "ancestry": [
@@ -92,9 +92,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 470,
-      "duration_run1_first_ms": 470,
-      "duration_run2_first_ms": 349,
+      "duration_ms": 368,
+      "duration_run1_first_ms": 368,
+      "duration_run2_first_ms": 339,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -108,7 +108,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity for revoke_access: nested + flat both surface ok+revoked_at; contract is shape-parallel, not byte-identical",
       "variance_ok": true,
-      "variance_ratio": 1.35
+      "variance_ratio": 1.09
     },
     {
       "ancestry": [
@@ -119,9 +119,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 429,
-      "duration_run1_first_ms": 429,
-      "duration_run2_first_ms": 389,
+      "duration_ms": 293,
+      "duration_run1_first_ms": 293,
+      "duration_run2_first_ms": 287,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -135,7 +135,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / parse-path parity: nested + flat shapes both insert with byte-identical success",
       "variance_ok": true,
-      "variance_ratio": 1.1
+      "variance_ratio": 1.02
     },
     {
       "ancestry": [
@@ -146,9 +146,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 203,
-      "duration_run1_first_ms": 203,
-      "duration_run2_first_ms": 121,
+      "duration_ms": 131,
+      "duration_run1_first_ms": 131,
+      "duration_run2_first_ms": 161,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -162,7 +162,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot delete_user under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.68
+      "variance_ratio": 1.23
     },
     {
       "ancestry": [
@@ -173,9 +173,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 207,
-      "duration_run1_first_ms": 207,
-      "duration_run2_first_ms": 119,
+      "duration_ms": 129,
+      "duration_run1_first_ms": 129,
+      "duration_run2_first_ms": 178,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -189,7 +189,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot grant_access under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.74
+      "variance_ratio": 1.38
     },
     {
       "ancestry": [
@@ -200,9 +200,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 197,
-      "duration_run1_first_ms": 197,
-      "duration_run2_first_ms": 129,
+      "duration_ms": 129,
+      "duration_run1_first_ms": 129,
+      "duration_run2_first_ms": 130,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "admin-users-shapes.spec.ts",
@@ -216,7 +216,7 @@
       "status_run2_final": "passed",
       "title": "admin-users-shapes.spec.ts / admin-users payload-shape back-compat (b1b309d regression) / rejection-path parity: VIEWER cannot revoke_access under either shape",
       "variance_ok": true,
-      "variance_ratio": 1.53
+      "variance_ratio": 1.01
     },
     {
       "ancestry": [
@@ -228,9 +228,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 225,
-      "duration_run1_first_ms": 225,
-      "duration_run2_first_ms": 222,
+      "duration_ms": 218,
+      "duration_run1_first_ms": 218,
+      "duration_run2_first_ms": 229,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -244,7 +244,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can grant viewer access via admin-users grant_access action",
       "variance_ok": true,
-      "variance_ratio": 1.01
+      "variance_ratio": 1.05
     },
     {
       "ancestry": [
@@ -256,9 +256,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 351,
-      "duration_run1_first_ms": 351,
-      "duration_run2_first_ms": 443,
+      "duration_ms": 366,
+      "duration_run1_first_ms": 366,
+      "duration_run2_first_ms": 347,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -272,7 +272,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / admin can revoke viewer access via admin-users revoke_access action; viewer denied at RLS post-revoke",
       "variance_ok": true,
-      "variance_ratio": 1.26
+      "variance_ratio": 1.05
     },
     {
       "ancestry": [
@@ -284,9 +284,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 360,
-      "duration_run1_first_ms": 360,
-      "duration_run2_first_ms": 324,
+      "duration_ms": 345,
+      "duration_run1_first_ms": 345,
+      "duration_run2_first_ms": 413,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -300,7 +300,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Admin grant-revoke life-cycles / fast-flow: viewer-denied grant + admin grants + admin revokes (baseline asserts covered by tests 1\u20134)",
       "variance_ok": true,
-      "variance_ratio": 1.11
+      "variance_ratio": 1.2
     },
     {
       "ancestry": [
@@ -312,9 +312,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 285,
-      "duration_run1_first_ms": 285,
-      "duration_run2_first_ms": 267,
+      "duration_ms": 271,
+      "duration_run1_first_ms": 271,
+      "duration_run2_first_ms": 246,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "auth-rls.spec.ts",
@@ -328,7 +328,7 @@
       "status_run2_final": "passed",
       "title": "auth-rls.spec.ts / Supabase auth + RLS isolation / Unauthorized denial paths / viewer cannot create users via admin-users edge function",
       "variance_ok": true,
-      "variance_ratio": 1.07
+      "variance_ratio": 1.1
     },
     {
       "ancestry": [
@@ -340,9 +340,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 3,
-      "duration_ms": 60631,
-      "duration_run1_first_ms": 60631,
-      "duration_run2_first_ms": 60708,
+      "duration_ms": 60699,
+      "duration_run1_first_ms": 60699,
+      "duration_run2_first_ms": 60724,
       "error_run1_final": {
         "location_column": null,
         "location_file": null,
@@ -378,9 +378,9 @@
       "attempts_run1": 1,
       "attempts_run2": 1,
       "column": 1,
-      "duration_ms": 1467,
-      "duration_run1_first_ms": 1467,
-      "duration_run2_first_ms": 1453,
+      "duration_ms": 1484,
+      "duration_run1_first_ms": 1484,
+      "duration_run2_first_ms": 1474,
       "error_run1_final": null,
       "error_run2_final": null,
       "file": "bug-e-brand-divergence.spec.ts",
