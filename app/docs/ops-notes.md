@@ -17,6 +17,7 @@ Current active cross-reference anchors:
 - `#closure-cycle-audit-log-update-attempts-10-11-12-empirical-progress` -- `### Closure cycle audit log update: attempts 10-11-12 empirical progress on this host` (added by THIS COMMIT's `docs(ops-notes)` entry, paired with the appended Capture Attempt Log rows 10 + 11)
 - `#capture-v6-vs-playwright-discovery-scope-gap` -- `## Capture-v6 vs Playwright discovery scope gap` (added by `05b29d6`)
 - `#cross-references` -- cosmetic duplicate H3/H4 slug (added by `c4a3444`'s v1.4 followup audit): 5 occurrences across `docs/bug-diagnoses.md` (Bug A + Bug B `###`) + `app/docs/ops-notes.md` (1 H2 + 2 H3 + 1 H4-level instance) all under distinct H2 parents; zero functional impact (no in-doc or cross-doc link targets this slug directly); tolerated per the cross-heading-duplicate convention documented above.
+- `#cross-references-bug-b` -- explicit-disambiguation sibling of the `#cross-references` cosmetic-collision slug (added by `bb59c57`'s hygiene-polish followup): `### Cross-references (Bug B)` in `docs/bug-diagnoses.md` Bug B subsection anchors at this distinct slug (GFM algorithm: lowercase + spaces→dashes + parenthesis-stripped → `#cross-references-bug-b`). Bug A's H3 stays at the un-disambiguated `#cross-references` for visual symmetry with the cross-heading-duplicate convention; future Bug-N sections adopting convention option (ii) anchor at `### Cross-references (Bug N)` → `#cross-references-bug-n` (forward-expandable pattern).
 
 # Operational notes
 
