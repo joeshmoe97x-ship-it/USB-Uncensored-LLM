@@ -51,12 +51,12 @@ const withLegacyCamera = generateLegacyWrapper<Camera>({
   ip_address: 'ip',
 });
 
-const withLegacyEvent = generateLegacyWrapper<{ happened_at: string; camera_id: string }>({
+const withLegacyEvent = generateLegacyWrapper<SecurityEvent>({
   timestamp: 'happened_at',
   device_id: 'camera_id',
 });
 
-const withLegacyEvidence = generateLegacyWrapper<{ captured_at: string; meta: unknown }>({
+const withLegacyEvidence = generateLegacyWrapper<Evidence>({
   timestamp: 'captured_at',
   metadata:  'meta',
 });
@@ -149,7 +149,7 @@ class MockTail {
   async listEvents(): Promise<SecurityEvent[]> {
     return [...this.events]
       .sort((a, b) => b.happened_at.localeCompare(a.happened_at))
-      .map(withLegacyEvent) as unknown as SecurityEvent[];
+      .map(withLegacyEvent);
   }
   async getEvent(id: string) {
     const e = this.events.find((x) => x.id === id);
@@ -186,7 +186,7 @@ class MockTail {
   async listEvidence(): Promise<Evidence[]> {
     return [...this.evidence]
       .sort((a, b) => b.captured_at.localeCompare(a.captured_at))
-      .map(withLegacyEvidence) as unknown as Evidence[];
+      .map(withLegacyEvidence);
   }
   async getEvidenceDownloadUrl(id: string): Promise<{ expires_in: number }> {
     // Demo: throw-when-not-found retained for parity with the prior `Promise<string>`
