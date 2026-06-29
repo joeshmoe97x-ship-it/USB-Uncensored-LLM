@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `3a52e32` (`chore(infra): persist capture-v6.sh + scrub_and_build.py + audit_script.sh + supabase config`, audit-chain adoption v2.1).
+# Tripod Closure: see `app/docs/ops-notes.md` #capture-v6-vs-playwright-discovery-scope-gap (Phase F+G mirror invariant — entrypoint of the capture-pipeline; Playwright config + scrub_and_build.py form the tripod).
+# Anchor Covenant (jq-fallback): strictly depends on `supabase status -o json` keys `API_URL` + `ANON_KEY` + `SERVICE_ROLE_KEY` (capture pipeline cannot proceed without all three).
+# Disambiguation: Linux-portable USB wrapper; hardcoded $HOME/USB-Uncensored-LLM/Linux/app project root (line 14).
+# Tag Chain: synced as of audit-cycle-v2.1.
+# ----------------------------------------------------------------------------
 # v6 capture-baseline: standalone script, NOT inline `bash -c '...'`
 # Runs as `bash capture-v6.sh` to bypass any basher-tool `bash -c` wrapper trap-firing.
-# Path-safe: PROJECT_DIR via $HOME + relative path; no /home/bgdaddy literal.
+# Path-safe: PROJECT_DIR via $HOME + relative path; no /home/bagdaddy literal.
 
 set +e
 
