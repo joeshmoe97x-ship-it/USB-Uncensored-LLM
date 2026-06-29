@@ -768,3 +768,64 @@ The commit diff is a 4-line edit covering two coordinated levers:
 2. `package.json` `dev` script changed from `"vite"` to `"vite --host 127.0.0.1"` so Vite binds the IPv4 loopback IN ADDITION to its default IPv6-first bind. Belt-and-braces: both gate-predicate AND bind-target tightened simultaneously to expose any single-family-only regression.
 
 If attempt 7 still fails, the next diagnosis likely involves (a) `pnpm exec` vs direct `vite` invocation parsing differences, or (b) Vite's host-header normalization in 7.x requiring an explicit `localhost` rather than raw `127.0.0.1`. The [`Capture Attempt Log` H2 above](#capture-attempt-log) will be updated again on the next run.
+
+## Capture-v6 vs Playwright discovery scope gap
+
+The capture-v6 baseline (`tests/e2e/_baseline-run.json` at HEAD, `f958606` capture) reports **13 tests across 3 specs**, but the on-disk `tests/e2e/` carries **4 `.spec.ts` files** that a generic `npx playwright test` would discover. The divergence is **architectural, not a bug**; this section documents the reason so future archaeologists running a full-scope Playwright run don't reconcile to a fresh-baseline surprise.
+
+### On-disk spec inventory (vs Phase F+G hardcoded 3-spec list)
+
+| File | In capture-v6? | T-RLS rows contributed |
+|---|---|---|
+| `tests/e2e/admin-users-shapes.spec.ts` | yes (Phase F + G) | T-RLS-1..6 (6 rows; `b1b309d` back-compat) |
+| `tests/e2e/auth-rls.spec.ts` | yes (Phase F + G) | T-RLS-7..12 (6 rows; Supabase auth + RLS isolation) |
+| `tests/e2e/bug-e-brand-divergence.spec.ts` | yes (Phase F + G) | T-RLS-13 (1 row; CameraGrid BRAND `?? FALLBACK` lock-in) |
+| `tests/e2e/bug-e-api-probe.spec.ts` | **NO** | T-RLS-13 hypothetical; if added, **`bug-e-brand-divergence.spec.ts` shifts to T-RLS-14** |
+
+Generic `npx playwright test` would yield **14 tests**. Note the sort-shift: `bug-e-api-` alphabetically precedes `bug-e-brand-`, so the probe would slot ahead of `bug-e-brand-divergence.spec.ts` — pushing the existing T-RLS-13 row to T-RLS-14 in any future baseline expansion.
+
+### Why `bug-e-api-probe.spec.ts` is excluded
+
+The spec's top-of-file JSDoc explicitly opts out of capture-v6:
+
+> INTENTIONAL non-inclusion in capture-v6.sh regression-test list.
+> capture-v6.sh's Phase F + Phase G use HARDCODED file lists
+> (`tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts`)
+> rather than a glob, so this file is excluded by default.
+> Running this spec TWICE per capture cycle would otherwise
+> pollute `_baseline-run.json` with a non-regression row, distorting
+> the `captured_at` aggregate counts.
+
+It is a **diagnostic probe, not a regression lock-in**. Per the [`Bug E lock-in workflow`](#bug-e-lock-in-workflow) H2 above, the Bug E surface is covered by a four-artifact design (defensive fallback shape + regression lock-in spec + capture-v6 Phase F+G wiring + on-demand validator). `bug-e-api-probe.spec.ts` is the **architectural Artifact-4 sibling to `bug-e-brand-divergence.spec.ts`**: same Bug E hypothesis-1 surface, but tested via a one-shot diagnostic probe rather than a regression lock-in. Including it in capture-v6 would conflate diagnostic + regression into a single baseline artifact.
+
+### What a generic `npx playwright test` reveals
+
+Running `npx playwright test` (no spec-list filter, from `app/`) on a clean Supabase local stack discovers all 4 specs. Output shows the 13-test regression contract PLUS 1 additional test from `bug-e-api-probe.spec.ts` with `[bug-e-api-probe.*]` worker-stderr verdict lines (`API_FULL` / `API_PARTIAL` / `API_EMPTY`). The added test result is the diagnostic surface; it intentionally does NOT appear in capture-v6's `_baseline-run.json`.
+
+### Verification command
+
+```bash
+# 1. Confirm only 3 specs run in capture-v6 (Phase F + G verbatim)
+grep -nE 'tests/e2e/[a-z-]+\.spec\.ts' \
+  app/tests/e2e/_tools/capture-baseline/capture-v6.sh
+
+# 2. Confirm all 4 specs live on disk + 1 active test in bug-e-api-probe
+find app/tests -name '*.spec.ts' -type f | sort
+grep -nE '^test\(' app/tests/e2e/bug-e-api-probe.spec.ts
+```
+
+### Resolution intent (no fix required)
+
+The audit gap is closed at the documentation layer: this section enumerates the deliberate divergence so a future contributor running `npx playwright test` (and seeing a 14-test run) can reconcile the count against capture-v6's 13-test baseline without assuming a regression. The 1-test delta is the architectural Artifact-4 sibling, not a missed spec.
+
+A defensive `testIgnore` rule in `playwright.config.ts` (`testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']`) WOULD eliminate the gap fully but is **not recommended** for the current code — adding it obscures the probe's one-shot usage pattern documented in the spec's own JSDoc and removes a contributor-facing affordance. **Leave as-is.**
+
+### Cross-references
+
+- `app/tests/e2e/bug-e-api-probe.spec.ts` — the excluded diag spec (top-of-file JSDoc: INTENTIONAL non-inclusion)
+- `app/playwright.config.ts` — `testDir: './tests/e2e'`, no `testIgnore` (audit gap is by design)
+- `app/tests/e2e/_tools/capture-baseline/capture-v6.sh` — Phase F + G hardcoded 3-spec list (`tests/e2e/auth-rls.spec.ts tests/e2e/admin-users-shapes.spec.ts tests/e2e/bug-e-brand-divergence.spec.ts`); intentional filter, not a glob
+- [`Bug E lock-in workflow`](#bug-e-lock-in-workflow) H2 above — the four-artifact design rationale (this section is its deliberate Artifact-4 sibling)
+- `app/tests/e2e/_baseline-run.json` (`f958606` at HEAD) — canonical capture-v6 artefact; `.aggregate.total_tests == 13` reflects the curated spec list, NOT Playwright's generic discovery
+
+The new section slug `#capture-v6-vs-playwright-discovery-scope-gap` does not collide with any anchor in the [`Anchor collision covenant`](#anchor-collision-covenant) H2 inventory above.
