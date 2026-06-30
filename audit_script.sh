@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
-# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension).
+# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension + v2.7 inventory-count regression sentinel + v2.7 regex-pitfall sentinels (Phases R + G-mirror + H-mirror)).
 # Tripod Closure: see `app/docs/ops-notes.md` #anchor-collision-covenant (the H2 convention this script validates end-to-end).
-# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and `""" docstring """` (Python) sectors; registered as inverse anchors of the docs/tooling corpus.
+# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and """ docstring """ (Python) sectors; v2.7 extension: inventory-count regression sentinel (strict regex ``^- `#``, baseline 16 rows at v2.7; off-hand-vs-strict delta 28; regex-pitfall sentinels at Phase R + Phase G mirror + Phase H mirror reasserting 44/16/28 baselines); registered as inverse anchors of the docs/tooling corpus.
 # Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
 # Tag Chain: synced with audit-cycle tag chain (no version pin).
 # ----------------------------------------------------------------------------
