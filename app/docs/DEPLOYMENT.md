@@ -140,4 +140,8 @@ displays a remediation hint.
 
 ## Reference links
 
+> **Reference-style-link pitfall** (logged for future archeologists): `[Recommended Next Step][1]` here in step 1 + in the Companion docs section is a **forward-reference** to the `[1]: ./ops-notes.md#sidecar-disable-config-adopted` definition at the bottom of this doc -- NOT an inline link. The inline equivalent would be `[Recommended Next Step](./ops-notes.md#sidecar-disable-config-adopted)` which DOES NOT pick up the `title="..."` archeology-rationale attribute. Off-hand conversions to inline link syntax lose the bottom-registry convention's three archeology wins: readable step-by-step prose (no URL clutter), title-attributed SHA-cite chain (`f2d0744` + `935d9dc` + `7dbd099`), and forward-reference discoverability via `grep -nE '^\[\d+\]:' app/docs/DEPLOYMENT.md`.
+
+This protects future maintainers from the same prose-vs-registry false-positive signal that prompted the v2.7 docs-cycle heritage (mirrors the regex-pitfall-blockquote in app/docs/ops-notes.md Anchor collision covenant).
+
 [1]: ./ops-notes.md#sidecar-disable-config-adopted "## Sidecar-disable config (adopted) -- f2d0744 flips the stale Recommended Next Step deferral wording to formal Adopted status; the [analytics] enabled = false + [inbucket] enabled = false blocks were already-live in app/supabase/config.toml since the 935d9dc subtree import; the live-render verify evidence is in 7dbd099 chore commit."
