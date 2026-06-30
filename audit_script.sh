@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
-# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension + v2.7 inventory-count regression sentinel + v2.7 regex-pitfall sentinels (Phases R + G-mirror + H-mirror) + v2.9 incident-RETRO grep-census extension at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`); v2.9 census-block forward-fix at `7d143fb` (relocate out of `if [ -n "$py_files" ] else` into Phase C global scope; closes audit-note #3 of the [releases-install-snippet-bug] retro tripod); v2.9 path-semantics fix in this commit (prepend `${PROJECT_DIR##*/}/` in the cross-file census `echo` line so the inaugural metric surfaces as `1 file (app/docs/ops-notes.md)` repo-root-relative, matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files).
+# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension + v2.7 inventory-count regression sentinel + v2.7 regex-pitfall sentinels (Phases R + G-mirror + H-mirror) + v2.9 incident-RETRO grep-census extension at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`); v2.9 census-block forward-fix at `7d143fb` (relocate out of `if [ -n "$py_files" ] else` into Phase C global scope; closes audit-note #3 of the [releases-install-snippet-bug] retro tripod); v2.9 path-semantics fix in this commit (prepend `${PROJECT_DIR##*/}/` in the cross-file census `echo` line so the inaugural metric surfaces as `1 file (app/docs/ops-notes.md)` repo-root-relative, matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files); v3.0 extension: audit-note state census at Phase C (inaugural occurrence: 4 markers in `app/docs/ops-notes.md`; marker regex `\[audit-note[^]]*\]`; state extraction via `-- STATE` keyword with ACTIVE default; per-file line-numbered + cross-file state-grouped descending-count census; closes the audit-note-count-census followup of the [releases-install-snippet-bug] retro tripod).
 # Tripod Closure: see `app/docs/ops-notes.md` #anchor-collision-covenant (the H2 convention this script validates end-to-end).
-# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and """ docstring """ (Python) sectors; v2.7 extension: inventory-count regression sentinel (strict regex ``^- `#``, baseline 16 rows at v2.7; off-hand-vs-strict delta 28; regex-pitfall sentinels at Phase R + Phase G mirror + Phase H mirror reasserting 44/16/28 baselines); v2.9 extension: incident-RETRO grep-census at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`, registered as inverse anchor of the docs corpus; regex pattern `\[INCIDENT-RETRO:[a-z][a-z0-9_-]+\]|\[[a-z][a-z0-9_-]+-bug\]`; v2.9 forward-fix `7d143fb` makes the census reachable unconditionally; v2.9 path-semantics fix in this commit prepends `${PROJECT_DIR##*/}/` in the cross-file census `echo` so the inaugural metric surfaces as `[releases-install-snippet-bug]: 1 file (app/docs/ops-notes.md)` matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files; registered as inverse anchors of the docs/tooling corpus.
-# Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks + v2.9 incident-RETRO grep-census on `*.md` corpus per Phase C [path-semantics fix: prepend `${PROJECT_DIR##*/}/` in cross-file census `echo` for repo-root-relative display]) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` + `*.md` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
+# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and """ docstring """ (Python) sectors; v2.7 extension: inventory-count regression sentinel (strict regex ``^- `#``, baseline 16 rows at v2.7; off-hand-vs-strict delta 28; regex-pitfall sentinels at Phase R + Phase G mirror + Phase H mirror reasserting 44/16/28 baselines); v2.9 extension: incident-RETRO grep-census at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`, registered as inverse anchor of the docs corpus; regex pattern `\[INCIDENT-RETRO:[a-z][a-z0-9_-]+\]|\[[a-z][a-z0-9_-]+-bug\]`; v2.9 forward-fix `7d143fb` makes the census reachable unconditionally; v2.9 path-semantics fix in this commit prepends `${PROJECT_DIR##*/}/` in the cross-file census `echo` so the inaugural metric surfaces as `[releases-install-snippet-bug]: 1 file (app/docs/ops-notes.md)` matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files; v3.0 extension: audit-note grep-census at Phase C (inaugural occurrence: 4 markers in `app/docs/ops-notes.md`; regex `\[audit-note[^]]*\]`; state extraction via `-- STATE` keyword with ACTIVE default; per-file line-numbered + cross-file state-grouped descending-count census; registered as inverse anchor of the docs corpus); registered as inverse anchors of the docs/tooling corpus.
+# Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks + v2.9 incident-RETRO grep-census on `*.md` corpus per Phase C [path-semantics fix: prepend `${PROJECT_DIR##*/}/` in cross-file census `echo` for repo-root-relative display] + v3.0 audit-note state-census on `*.md` corpus per Phase C [state extraction via `-- STATE` keyword with ACTIVE default; per-file line-numbered + cross-file state-grouped descending-count census]) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` + `*.md` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
 # Tag Chain: synced with audit-cycle tag chain (no version pin).
 # ----------------------------------------------------------------------------
 PROJECT_DIR=$HOME/USB-Uncensored-LLM/Linux/app
@@ -117,6 +117,75 @@ mkdir -p /tmp/build-log
         if (prev_tag != "") {
           clean = substr(prev_tag, 2, length(prev_tag)-2)
           printf "[%s]: %d file%s (%s)\n", clean, n, (n == 1 ? "" : "s"), files
+        }
+      }
+    ' | sort -t: -k2 -rn
+  else
+    echo "   (no .md files tracked by git)"
+  fi
+
+  # v3.0: audit-note state census extension (inaugural occurrence: 4 markers in `app/docs/ops-notes.md`)
+  #   - per-file, line-numbered census (mirrors v2.5 cross-domain + v2.9 incident-RETRO structure)
+  #   - cross-file state-grouped frequency in `[<STATE>]: N file(s) (file-list)` form
+  #   - states extracted from `-- STATE` keyword in the marker; default ACTIVE if no keyword
+  #   - inaugurates the audit-note state census so future audit-note drift is caught at the
+  #     tool-layer rather than via off-hand grep audits (closes followup #3 of the audit-chain)
+  echo
+  echo "-- v3.0: audit-note marker census (per-file, line-numbered) --"
+  if [ -n "$md_files" ]; then
+    # Single-line markers only; multi-line audit-note markers (those wrapping before the closing `]`)
+    # would not match this regex and would need a different parser. Convention: keep audit-notes single-line.
+    grep -nHE '\[audit-note[^]]*\]' $md_files 2>/dev/null | awk -F: '
+      {
+        # Identify markers lacking an explicit `-- STATE` keyword so the per-file census surfaces them.
+        # These fall into the `ACTIVE` bucket in the cross-file census below; the inline tag
+        # makes the no-state-keyword markers visible to archeologists reading the per-file output.
+        marker = ""
+        for (i = 3; i <= NF; i++) marker = marker (i > 3 ? ":" : "") $i
+        if (marker !~ /-- (OPEN|CLOSED|PENDING|RESOLVED)([^A-Za-z]|$)/) {
+          $0 = $0 " [no-state-keyword]"
+        }
+        print
+      }
+    ' || echo "   (no audit-note markers found)"
+  else
+    echo "   (no .md files tracked by git)"
+  fi
+  echo
+  echo "-- v3.0: audit-note state-grouped census (cross-file, descending) --"
+  if [ -n "$md_files" ]; then
+    grep -HoE '\[audit-note[^]]*\]' $md_files 2>/dev/null | awk -v p="${PROJECT_DIR##*/}/" '
+      BEGIN { FS=":" }
+      {
+        file = $1
+        # Extract marker safely. offset = length(file) + 2: 1 for the colon separator
+        # and 1 to start at the marker first char. Markers may contain internal colons.
+        marker = substr($0, length(file) + 2)
+        state = "ACTIVE"
+        if (match(marker, /-- OPEN([^A-Za-z]|$)/)) state = "OPEN"
+        else if (match(marker, /-- CLOSED([^A-Za-z]|$)/)) state = "CLOSED"
+        else if (match(marker, /-- PENDING([^A-Za-z]|$)/)) state = "PENDING"
+        else if (match(marker, /-- RESOLVED([^A-Za-z]|$)/)) state = "RESOLVED"
+        print state "|" p file
+      }
+    ' | sort -u | awk -F'|' '
+      {
+        state = $1; file = $2
+        if (state == prev_state) {
+          files = files ", " file
+          n++
+        } else {
+          if (prev_state != "") {
+            printf "[%s]: %d file%s (%s)\n", prev_state, n, (n == 1 ? "" : "s"), files
+          }
+          prev_state = state
+          files = file
+          n = 1
+        }
+      }
+      END {
+        if (prev_state != "") {
+          printf "[%s]: %d file%s (%s)\n", prev_state, n, (n == 1 ? "" : "s"), files
         }
       }
     ' | sort -t: -k2 -rn
