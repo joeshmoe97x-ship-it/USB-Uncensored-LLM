@@ -72,6 +72,24 @@ mkdir -p /tmp/build-log
     echo '   (no .py files tracked by git)'
   fi
 
+  # v2.7: Anchor collision covenant inventory-count regression sentinel
+  echo
+  echo '-- v2.7: inventory-count regression sentinel (strict regex grep -cE matching lines that start with `- \`#slug`) --'
+  inv_count=$(grep -cE '^- `#' "$OPS" 2>/dev/null || echo 0)
+  echo "   strict inventory count: $inv_count"
+  echo '   baseline: 16 rows at v2.7 (rows 1..14 + sidecar-disable-config-adopted row 15 + adopted-cross-domain-header-rendering-check-extension-v2-5 row 16);'
+  echo '   a future +N/-N delta announces a PR adding/removing inventory rows; manual review'
+  echo '   is required for archeology traceability per the v2.7 docs-cycle convention.'
+  echo
+  echo '-- v2.7: inventory-row line-numbered census (per row, line number + first 80 chars) --'
+  grep -nE '^- `#' "$OPS" | awk -F: '{printf "     %4d| %s\n", $1, substr($2, 1, 80)}' | head -50 || echo '   (none)'
+
+  # v2.7 Phase R: regex pitfalls sentinel -- closes docs-vs-tooling loop with the pitfall-blockquote in app/docs/ops-notes.md (cross-references the v2.7 census columns above)
+  echo '-- v2.7 Phase R: regex pitfalls (off-hand `^- \` matches prose bullets; strict `^- \`#` matches inventory rows); baselines: 44 / 16 / 28 at v2.7 --'
+  offhand_count=$(grep -cE '^- `' "$OPS" 2>/dev/null || echo 0)
+  printf '   off-hand count: %d   strict count: %d   delta: %d   (baselines: 44 / 16 / 28 at v2.7; the pitfall-blockquote immediately above the inventory rows cross-references this delta)\n' "$offhand_count" "$inv_count" "$((offhand_count - inv_count))"
+  [ "$((offhand_count - inv_count))" -eq 28 ] || echo '   WARN: regex-pitfall delta drifted away from 28; consult app/docs/ops-notes.md pitfall-blockquote for the archeology-rationale.' >&2
+
   print_phase 'D: every GFM cross-reference [text](#anchor) link; classify by target slug'
   echo '-- links that begin with # --'
   grep -oE '\]\(#[a-z][a-z0-9-]*\)' "$OPS" | sort | uniq -c | sort -rn
