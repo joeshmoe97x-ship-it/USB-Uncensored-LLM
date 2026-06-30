@@ -70,6 +70,7 @@ mkdir -p /tmp/build-log
     grep -hE '^Anchor Covenant \([^)]+\):' $py_files 2>/dev/null | sort | uniq -c | sort -rn || echo '   (no Python SPDX Anchor Covenant found)'
   else
     echo '   (no .py files tracked by git)'
+  fi
 
   # v2.9: incident-RETRO grep-census extension (inaugural occurrence: `[releases-install-snippet-bug]`)
   #   - per-file, line-numbered census (mirrors v2.5 cross-domain structure)
@@ -116,7 +117,6 @@ mkdir -p /tmp/build-log
     ' | sort -t: -k2 -rn
   else
     echo "   (no .md files tracked by git)"
-  fi
   fi
 
   # v2.7: Anchor collision covenant inventory-count regression sentinel
