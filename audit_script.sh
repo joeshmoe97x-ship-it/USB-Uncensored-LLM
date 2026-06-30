@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ----------------------------------------------------------------------------
-# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension + v2.7 inventory-count regression sentinel + v2.7 regex-pitfall sentinels (Phases R + G-mirror + H-mirror) + v2.9 incident-RETRO grep-census extension at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`)).
+# Provenance: introduced by `3a52e32` (last modified by `4216366` — rewire to Linux/app + GRANTS-blocked fork checkpoint; audit-chain adoption v1.11 + v2.5 cross-domain extension + v2.7 inventory-count regression sentinel + v2.7 regex-pitfall sentinels (Phases R + G-mirror + H-mirror) + v2.9 incident-RETRO grep-census extension at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`); v2.9 census-block forward-fix at `7d143fb` (relocate out of `if [ -n "$py_files" ] else` into Phase C global scope; closes audit-note #3 of the [releases-install-snippet-bug] retro tripod); v2.9 path-semantics fix in this commit (prepend `${PROJECT_DIR##*/}/` in the cross-file census `echo` line so the inaugural metric surfaces as `1 file (app/docs/ops-notes.md)` repo-root-relative, matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files).
 # Tripod Closure: see `app/docs/ops-notes.md` #anchor-collision-covenant (the H2 convention this script validates end-to-end).
-# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and """ docstring """ (Python) sectors; v2.7 extension: inventory-count regression sentinel (strict regex ``^- `#``, baseline 16 rows at v2.7; off-hand-vs-strict delta 28; regex-pitfall sentinels at Phase R + Phase G mirror + Phase H mirror reasserting 44/16/28 baselines); v2.9 extension: incident-RETRO grep-census at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`, registered as inverse anchor of the docs corpus; regex pattern `\[INCIDENT-RETRO:[a-z][a-z0-9_-]+\]|\[[a-z][a-z0-9_-]+-bug\]`); registered as inverse anchors of the docs/tooling corpus.
-# Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks + v2.9 incident-RETRO grep-census on `*.md` corpus per Phase C) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` + `*.md` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
+# Anchor Covenant (inverse + cross-domain SPDX): inverse-anchor grep patterns `#[a-z][a-z0-9-]*` (slug census) + `` `[a-f0-9]{7}` `` (SHA-citation resolution); v2.5 extension: cross-domain SPDX header checks across `# shell-comment` (bash) and """ docstring """ (Python) sectors; v2.7 extension: inventory-count regression sentinel (strict regex ``^- `#``, baseline 16 rows at v2.7; off-hand-vs-strict delta 28; regex-pitfall sentinels at Phase R + Phase G mirror + Phase H mirror reasserting 44/16/28 baselines); v2.9 extension: incident-RETRO grep-census at Phase C (inaugural `[releases-install-snippet-bug]` tag in `app/docs/ops-notes.md`, registered as inverse anchor of the docs corpus; regex pattern `\[INCIDENT-RETRO:[a-z][a-z0-9_-]+\]|\[[a-z][a-z0-9_-]+-bug\]`; v2.9 forward-fix `7d143fb` makes the census reachable unconditionally; v2.9 path-semantics fix in this commit prepends `${PROJECT_DIR##*/}/` in the cross-file census `echo` so the inaugural metric surfaces as `[releases-install-snippet-bug]: 1 file (app/docs/ops-notes.md)` matching the docs-corpus convention; `git ls-files` stays CWD-relative so the inner grep can access the files; registered as inverse anchors of the docs/tooling corpus.
+# Disambiguation: validation tool (with v2.5 cross-domain SPDX header checks + v2.9 incident-RETRO grep-census on `*.md` corpus per Phase C [path-semantics fix: prepend `${PROJECT_DIR##*/}/` in cross-file census `echo` for repo-root-relative display]) — idempotent + read-only against `docs/*` + `*.sh` + `*.py` + `*.md` (git-tracked) + outputs to `/tmp/build-log/final-archeology-drift-audit.log`; not a setup/orchestration tool.
 # Tag Chain: synced with audit-cycle tag chain (no version pin).
 # ----------------------------------------------------------------------------
 PROJECT_DIR=$HOME/USB-Uncensored-LLM/Linux/app
@@ -90,7 +90,12 @@ mkdir -p /tmp/build-log
   if [ -n "$md_files" ]; then
     for f in $md_files; do
       for tag in $(grep -hoE '\[INCIDENT-RETRO:[a-z][a-z0-9_-]+\]|\[[a-z][a-z0-9_-]+-bug\]' "$f" 2>/dev/null | sort -u); do
-        echo "${tag}|${f}"
+        # Repo-root-relative path in output: prepend the project-subdir basename ("app/")
+        # so the inaugural metric surfaces as `[releases-install-snippet-bug]: 1 file
+        # (app/docs/ops-notes.md)` matching the docs-corpus convention. The grep above
+        # uses CWD-relative `$f` (CWD=$PROJECT_DIR=app/) which is accessible; the output
+        # string here is purely for display.
+        echo "${tag}|${PROJECT_DIR##*/}/${f}"
       done
     done | sort | awk -F'|' '
       {
