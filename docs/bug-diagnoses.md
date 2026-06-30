@@ -354,3 +354,73 @@ The test step at `tests/e2e/auth-rls.spec.ts:40` runs after admin signin claims 
 - [`app/tests/e2e/bug-e-api-probe.spec.ts`](../app/tests/e2e/bug-e-api-probe.spec.ts) — the architectural Artifact-4 sibling (hypothesis-1 API-payload probe) of the four-artifact Bug E design; surfaces `[bug-e-api-probe.*verdict=API_FULL|API_PARTIAL|API_EMPTY]` worker-stderr lines that complement this section's empirical evidence chain (see also `app/docs/ops-notes.md` § Bug E lock-in workflow ## Artifacts at HEAD). `testIgnore: ['**/tests/e2e/bug-e-api-probe.spec.ts']` (in `app/playwright.config.ts`) + capture-v6 hardcoded 3-spec list both exclude it from the regression cycle (per § Capture-v6 vs Playwright discovery scope gap); invocable on demand via `npx playwright test tests/e2e/bug-e-api-probe.spec.ts --reporter=line` (testIgnore bypassed by positional CLI).
 
 **Verification signal.** Until the fix lands, the docstring for T-RLS-11 will reference `'Shared Cam'` + `'camera-card'` + `Timeout: 20000ms`. Filtering for this exact substring is the bisect-marker for confirming the fix is in place.
+
+
+## Bug F — `supabase db reset` crashes with `error running container: exit 1` on Supabase CLI v2.107.0
+
+**STATUS: OPEN (upstream — Supabase CLI v2.107.0) plus a project-side Phase D (work-around layer) applied.** The upstream bug is unique to Supabase CLI v2.107.0's internal-bookkeeping layer (`schema_migrations` migration `20250926223044` self-inserts on every reset). We cannot patch the CLI; instead, `app/scripts/run-e2e.sh` Phase [1/6] adopts an idempotent-precondition work-around since commit `26c8d81` (audit-chain adoption v2.7.1; canonical archeology at [`app/docs/ops-notes.md` § Future audit-batch roadmap → Adopted: run-e2e.sh idempotent start guard (v2.7.1)](../app/docs/ops-notes.md#adopted-run-e2e-sh-idempotent-start-guard-v2-7-1)). Phase E (long-term resolution — CLI version pin) is deferred to a future commit cycle.
+
+**Symptom — verbatim log lines (grep-resolvable).** Running `supabase db reset` (or `npm run test:e2e:bash`) emits `error running container: exit 1` immediately after the `Initialising schema...` PNG-spinner line. Verbose mode (`supabase db reset --debug`) surfaces the deeper chain:
+
+```
+ERROR:  duplicate key value violates unique constraint "schema_migrations_pkey"
+DETAIL:  Key (version)=(20250926223044) already exists.
+STATEMENT: INSERT INTO "schema_migrations" ("version","inserted_at") VALUES ($1,$2)
+```
+
+Error is reproducible on:
+- a fully cleaned volume (after `supabase stop --no-backup` + `docker volume rm` of every `*omnisight*` volume + cold restart);
+- with `supabase db reset --no-seed` (skips `supabase/seed.sql` entirely — rules out seed-cause hypothesis);
+- on multiple successive attempts — error is consistent, not intermittent;
+- regardless of whether `supabase start` ran in advance (the work-around in `app/scripts/run-e2e.sh:31` short-circuits the redundant start when the stack is already up; even with the work-around in place, direct `supabase db reset` invocations that BYPASS the orchestrator still crash with the same error — confirming the upstream bug class).
+
+**Root cause — CLI v2.107.0 internal-bookkeeping race.** `schema_migrations` version `20250926223044` is a Supabase CLI v2.107.0-shipped internal bookkeeping migration that the CLI always tries to insert on every `supabase db reset`, regardless of whether the CLI's own `db-init` container has already populated it. Two concurrent INSERT paths race on the primary key:
+
+1. `supabase db reset` drops the public schema (which would normally empty `schema_migrations`).
+2. The CLI's internal `db-init` container fires asynchronously, applying the v2.107.0-shipped bookkeeping migration `20250926223044`.
+3. In parallel, the CLI's foreground reset machinery also tries to seed `schema_migrations` for the two user migrations (`20250101000000_init_schema.sql` + `20250101000001_grant_public_table_access.sql`).
+4. Two concurrent INSERT paths race on `schema_migrations_pkey`. Whoever loses the race commits a duplicate-key violation; the foreground reset propagates this error upstream to the CLI's user-visible `error running container: exit 1`.
+
+Key diagnostic surface: this race fires **even on a brand-new, fully-wiped Docker volume**. It is independent of the project's `seed.sql` / `migrations/*.sql` / `config.toml` — it is a Supabase CLI v2.107.0 internal-bookkeeping bug.
+
+**Phase D work-around — `app/scripts/run-e2e.sh:31`.** Replace the unconditional `supabase start` in Phase [1/6] with an idempotent precondition:
+
+```bash
+echo "==> [1/6] supabase start (skipped if already up -- see note below)"
+# Idempotent start: Supabase CLI v2.107.0 fires an async internal init script
+# on every `supabase start`, even on healthy stacks. That async insert races
+# against the synchronous `supabase db reset` on the next line and crashes
+# with `schema_migrations_pkey` duplicate key on version 20250926223044.
+# Using `status` as a precondition avoids the redundant start.
+supabase status >/dev/null 2>&1 || supabase start
+```
+
+Why the `>/dev/null 2>&1` suppression is required: the precondition's success/failure must NOT pollute the project's canonical worker-stderr capture path (`tests/e2e/_baseline-run.json` invariants depend on this silence; a noisy stderr would surface as a `T-RLS-*` pageerror in the regression report). The `|| supabase start` fallback fires on cold-stacks; the success-path SHORT-CIRCUITS when the stack is already up — eliminating the redundant `supabase start` invocation that triggers the async internal-init re-firing.
+
+**Why the work-around addresses the symptom but does not fix the root cause.** The Phase [1/6] guard makes one of the two competing sources of `schema_migrations` writes idempotent at the orchestration layer. On a fresh clone: `supabase status` returns non-zero → `supabase start` runs once → post-start state has the right `schema_migrations` row populated → subsequent `supabase db reset` invocations skip the redundant start → the CLI's internal `db-init` does not re-trigger. On a hot stack: `supabase status` returns zero → the unconditional `supabase start` is bypassed → no async internal-init re-fire → `supabase db reset` proceeds unblocked. The guard does NOT fix the CLI v2.107.0 internal-bookkeeping race directly — it just makes the orchestration layer compatible with the CLI's lack of idempotency.
+
+**Phase E (long-term resolution — pending).** Two options:
+
+1. **CLI version pin (preferred).** Downgrade to a known-working CLI release. Candidate set: `supabase v2.6.8` (earliest reasonably-stable v2.x; pre-`schema_shipment` race-trigger) / `supabase v2.7.0` (period of relative stability for schema-migration handling) / `supabase v2.8.x` (last family before v2.107.0's internal-bookkeeping ship of `20250926223044`). Pin in a follow-up commit; archive the pinned CLI tarball per the inversed-anchor bookkeeping precedent set by `app/scripts/_v271_insert.py`. Verification gate: cold `npm run test:e2e:bash` on a fresh docker-volume state with no `app/scripts/run-e2e.sh` guard.
+2. **Patch upstream Supabase CLI.** Open a PR against `supabase/cli` fixing the dual-INSERT race. Slow but lowest-cost long-term. Not the project's priority while the project-side work-around holds.
+
+**Verification signal (forward).** Until upstream fix lands or CLI is pinned:
+
+```bash
+# post-mortem: any past run that hit this exact bug class
+grep -nE 'error running container|schema_migrations_pkey.*20250926223044' /tmp/build-log/*.log
+# post-26c8d81 (work-around in place via run-e2e.sh): ZERO matches expected
+# any future regression flips back to non-zero matches
+```
+
+Future regressions of the symptom (post-work-around) surface when the user manually invokes `supabase db reset` bypassing `scripts/run-e2e.sh` entirely — the guard sits at the orchestration layer, not in the CLI itself; manual invocations don't go through the precondition. If the regression recurs, the fix path is: re-pin CLI per Phase E option (1), since the work-around's effectiveness is bound to the precondition's correctness.
+
+### Cross-references (Bug F)
+
+Following the convention documented in [`app/docs/ops-notes.md` § Anchor collision covenant](../app/docs/ops-notes.md#anchor-collision-covenant) option (ii): explicit-disambiguation sibling `### Cross-references (Bug F)` anchors at the distinct slug `#cross-references-bug-f`, parallel to Bug B at `#cross-references-bug-b` + Bug D at `#cross-references-bug-d`.
+
+- [`app/docs/ops-notes.md` § Future audit-batch roadmap → Adopted: run-e2e.sh idempotent start guard (v2.7.1)](../app/docs/ops-notes.md#adopted-run-e2e-sh-idempotent-start-guard-v2-7-1) — Bug F's project-side Phase D work-around is documented in this H3 row (the canonical archeology reference). The ops-notes ↔ bug-diagnoses tripod completes here: the v2.7.1 Adopted H3 row previously referenced this entry as `docs/bug-diagnoses.md Bug F (proposed, not yet committed)`; this commit flips that reference from plain-text to a live link. Load-bearing commit for Bug F's work-around: `26c8d81` (audit-chain adoption v2.7.1).
+- `app/scripts/run-e2e.sh:31` — the idempotent start guard: `supabase status >/dev/null 2>&1 || supabase start` (with the upstream-CLI-race-trigger comment block at lines 19-26).
+- `app/scripts/run-e2e.sh:32` — Phase [2/6] `supabase db reset` (the call site whose async/sync race the work-around addresses).
+- Forward followup commit (Phase E): pin Supabase CLI to a known-stable version per the `## Future audit-batch roadmap` parent H2 in `app/docs/ops-notes.md` (the deferred-pattern precedent carries forward to bug-diagnoses rows).
+- The grep-anchor verbatim strings (`error running container`, `schema_migrations_pkey`, `20250926223044`) are intentionally included in the **Symptom** block above so future archaeologists running any of the three greps will land on this entry.
