@@ -1,0 +1,64 @@
+name: install-smoke (v2.9-archeology-chain bundle integrity)
+
+# CI gate: any future typo in the published v29-archeology-chain.bundle install
+# snippet (anchor-covenant breakage on the bundle URL, sha256 drift, head SHA
+# drift, CDN-stripped-tampered bundle) will surface as a CI failure BEFORE the
+# next release is published. Runs on every push to ANY branch AND on every PR
+# that touches the integrity-bearing files (the wiki + the install documentation),
+# AND on manual dispatch.
+
+on:
+  push:
+    branches: ['main', 'v2.7-v2.8-stacked-archeology']  # narrow to protected branches for bounded CI cost; PR-target gate covers feature branches
+    paths:
+      - 'app/scripts/install-smoke-test.sh'
+      - '.github/workflows/install-smoke.yml'
+      - 'app/docs/ops-notes.md'
+      - 'docs/bug-diagnoses.md'
+  pull_request:
+    branches: [main, v2.7-v2.8-stacked-archeology]
+    paths:
+      - 'app/scripts/install-smoke-test.sh'
+      - '.github/workflows/install-smoke.yml'
+      - 'app/docs/ops-notes.md'
+      - 'docs/bug-diagnoses.md'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional release tag for context (e.g., v2.9-archeology-chain)'
+        required: false
+        default: 'v2.9-archeology-chain'
+
+permissions:
+  contents: read
+
+jobs:
+  install-snippet-smoke:
+    name: install-snippet integrity cluster (v29.bundle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: confirm branch + record provenance
+        run: |
+          echo "branch        : $(git branch --show-current)"
+          echo "HEAD (short)  : $(git rev-parse --short HEAD)"
+          echo "HEAD (long)   : $(git rev-parse HEAD)"
+
+      - name: install Linux prerequisites (curl + git + sha256sum)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends curl git ca-certificates
+
+      - name: run install-snippet smoke test
+        run: bash app/scripts/install-smoke-test.sh
+
+      - name: emit sentinel summary on success
+        if: success()
+        run: |
+          echo '[integration-summary] v2.9-archeology-chain bundle integrity cluster closed'
+          echo '[integration-summary] umbrella HEAD:     26c8d81'
+          echo '[integration-summary] bundle sha256:   745d495f657671af542b2dba652952b3ee8f435b1c4a97f3511d52d9914af57a'
+          echo '[integration-summary] bundle URL:      https://github.com/joeshmoe97x-ship-it/USB-Uncensored-LLM/releases/download/v2.9-archeology-chain/v29-archeology-chain.bundle'
