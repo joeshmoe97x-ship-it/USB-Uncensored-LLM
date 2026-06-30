@@ -22,8 +22,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-echo "==> [1/6] supabase start"
-supabase start
+echo "==> [1/6] supabase start (skipped if already up — see note below)"
+# Idempotent start: Supabase CLI v2.107.0 fires an async internal init script
+# on every `supabase start`, even on healthy stacks. That async insert races
+# against the synchronous `supabase db reset` on the next line and crashes
+# with `schema_migrations_pkey` duplicate key on version 20250926223044.
+# Using `status` as a precondition avoids the redundant start.
+supabase status >/dev/null 2>&1 || supabase start
 
 echo "==> [2/6] supabase db reset (applies migrations + seed.sql)"
 supabase db reset
