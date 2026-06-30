@@ -147,12 +147,28 @@ mkdir -p /tmp/build-log
     echo '      (no .py files tracked by git)'
   fi
 
+  # Phase G mirror: regex pitfalls sentinel -- symmetric with Phase R (reasserts 44 / 16 / 28 baselines under Phase G's SHA-citation grep pipeline)
+  echo
+  echo '-- Phase G mirror: regex pitfalls (reasserts Phase R baselines); off-hand `^- ` matches prose bullets; strict `^- `# matches inventory rows --'
+  phase_g_offhand=$(grep -cE '^- `' "$OPS" 2>/dev/null || echo 0)
+  phase_g_strict=$(grep -cE '^- `#' "$OPS" 2>/dev/null || echo 0)
+  printf '   off-hand count: %d   strict count: %d   delta: %d   (baselines: 44 / 16 / 28 at v2.7; symmetric mirror of Phase R)\n' "$phase_g_offhand" "$phase_g_strict" "$((phase_g_offhand - phase_g_strict))"
+  [ "$((phase_g_offhand - phase_g_strict))" -eq 28 ] || echo '   WARN: regex-pitfall baseline drift when reasserted under Phase G; consult app/docs/ops-notes.md pitfall-blockquote for the archeology-rationale.' >&2
+
   print_phase 'H: any potential orphan / dual-cite residue'
   echo '-- backtick-closing pattern followed immediately by another backtick --'
   grep -nE '`\s*,?\s*`[a-zA-Z]' "$OPS" | head -10 || true
   echo
   echo '-- double backticks with 7-vs-8-char SHA diff --'
   grep -nE '`[a-f0-9]{7,8}`' "$OPS" | head -20
+
+  # Phase H mirror: regex pitfalls sentinel -- symmetric with Phase R (reasserts 44 / 16 / 28 baselines under Phase H's orphan-residue grep pipeline)
+  echo
+  echo '-- Phase H mirror: regex pitfalls (reasserts Phase R baselines); off-hand `^- ` matches prose bullets; strict `^- `# matches inventory rows --'
+  phase_h_offhand=$(grep -cE '^- `' "$OPS" 2>/dev/null || echo 0)
+  phase_h_strict=$(grep -cE '^- `#' "$OPS" 2>/dev/null || echo 0)
+  printf '   off-hand count: %d   strict count: %d   delta: %d   (baselines: 44 / 16 / 28 at v2.7; symmetric mirror of Phase R)\n' "$phase_h_offhand" "$phase_h_strict" "$((phase_h_offhand - phase_h_strict))"
+  [ "$((phase_h_offhand - phase_h_strict))" -eq 28 ] || echo '   WARN: regex-pitfall baseline drift when reasserted under Phase H; consult app/docs/ops-notes.md pitfall-blockquote for the archeology-rationale.' >&2
 
   print_phase 'I: anchor-collision covenant inventory entry: each bullet''s sha-citation resolution'
   awk 'NR>=8 && NR<=13 {printf "%4d| %s\n", NR, $0}' "$OPS"

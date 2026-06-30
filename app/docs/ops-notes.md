@@ -6,7 +6,7 @@ Cross-heading duplicates (same slug under different H2 parents, or repeated at H
 
 > **Counting-regex pitfall** (logged for future archeologists): `grep -cE '^- \`' ops-notes.md` overcounts by 28 because it matches `- \`file/path\`: description` prose bullets in 7 H2 sections. The CORRECT inventory regex is `grep -cE '^- `#'` which matches only inventory rows whose first backtick-wrapped token IS a `\#slug`. Off-hand greps that ignore the `#` anchor will produce 44 -- that's noise, not anchor drift.
 
-This protects future maintainers from the same false-positive signal that prompted this turn's investigation.
+This protects future maintainers from the same false-positive signal that prompted this turn's investigation; also mirrored at app/docs/DEPLOYMENT.md ## Reference links pitfall-blockquote.
 
 Current active cross-reference anchors:
 
