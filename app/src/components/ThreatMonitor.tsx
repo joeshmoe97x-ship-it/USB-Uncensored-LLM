@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Threat } from '../types';
+import { Threat, AiSummary } from '../types';
 import { api } from '../lib/api';
+import { generateThreatSummary } from '../lib/aiSummary';
+import { useAuth } from '../contexts/AuthContext';
 import {
   ShieldAlert, Wifi, Target, Activity, Ban, CheckCircle2,
-  Signal, Clock,
+  Signal, Clock, Sparkles, RefreshCw,
 } from 'lucide-react';
 import { formatTimeAgo, formatTimestamp } from '../lib/format';
 import { useToast } from './Toast';
@@ -20,8 +22,31 @@ export default function ThreatMonitor() {
   const [blocked, setBlocked] = useState<Set<string>>(new Set());
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const { push } = useToast();
+  const { isAdmin } = useAuth();
+
+  // Local-Ollama threat summarization (admin-gated; no auto-fire -- explicit
+  // button click only, so real-time WS ticks cannot hammer the local LLM).
+  const [summary, setSummary] = useState<AiSummary | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   useEffect(() => { api.getThreats().then(setThreats); }, []);
+
+  const runSummarize = async () => {
+    if (isSummarizing) return; // Re-entrancy guard; concurrent clicks ignored.
+    setSummaryError(null);
+    setIsSummarizing(true);
+    try {
+      const result = await generateThreatSummary(threats);
+      setSummary(result);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setSummaryError(detail);
+      push({ type: 'error', message: 'AI Offline', detail });
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
 
   const blockMac = (mac: string, id: string) => {
     setBlocked((b) => { const s = new Set(b); s.add(mac); return s; });
@@ -57,6 +82,67 @@ export default function ThreatMonitor() {
           </div>
         </div>
       </header>
+
+      {isAdmin && (
+        <section className="bg-gradient-to-br from-blue-500/5 via-[#0a0a14] to-[#0a0a14] border border-blue-500/20 rounded-xl p-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-300" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-blue-200">AI Threat Summary</h3>
+              <span className="text-[10px] font-mono text-gray-500">via local Ollama</span>
+            </div>
+            <button
+              onClick={runSummarize}
+              disabled={isSummarizing}
+              className={
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded border transition-colors ' +
+                (isSummarizing
+                  ? 'bg-blue-500/10 text-blue-300 border-blue-500/30 cursor-wait'
+                  : 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-200 border-blue-500/40')
+              }
+            >
+              {isSummarizing ? (
+                <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Summing up…</>
+              ) : (
+                <><Sparkles className="w-3.5 h-3.5" /> Summarize with AI</>
+              )}
+            </button>
+          </div>
+
+          {summary && (
+            <div className="relative text-sm text-gray-200 leading-relaxed whitespace-pre-wrap mb-2">{summary.text}</div>
+          )}
+
+          {summary && (
+            <div className="relative text-[10px] font-mono text-gray-500 flex items-center gap-2 flex-wrap">
+              <span>model: <span className="text-gray-300">{summary.model}</span></span>
+              <span>·</span>
+              <span>{summary.threat_count} threats sampled</span>
+              <span>·</span>
+              <span>{summary.duration_ms}ms</span>
+              <span>·</span>
+              <span>generated {new Date(summary.generated_at).toLocaleTimeString()}</span>
+            </div>
+          )}
+
+          {summaryError && (
+            <div className="relative text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2 mt-2 flex items-center justify-between gap-2 flex-wrap">
+              <span>{summaryError}</span>
+              <button
+                onClick={() => setSummaryError(null)}
+                className="text-[10px] uppercase tracking-wider text-red-400 hover:text-red-200"
+              >Dismiss</button>
+            </div>
+          )}
+
+          {!summary && !summaryError && !isSummarizing && (
+            <div className="relative text-xs text-gray-500 italic">
+              Click <span className="text-blue-300">Summarize with AI</span> to generate a 2-3 sentence operational summary of the current WIDS activity via the local Ollama runtime. Free-text threat notes are excluded from the prompt to mitigate prompt-injection risk.
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-3">
         {threats.map((threat) => {

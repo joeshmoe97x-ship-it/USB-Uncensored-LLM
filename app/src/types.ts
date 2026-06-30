@@ -139,6 +139,29 @@ export interface Threat {
   details?: string;
 }
 
+// ----------------------------- AI Summary -------------------------------
+
+/**
+ * One-paragraph operational summary produced by `app/src/lib/aiSummary.ts`'s
+ * `generateThreatSummary()` helper. The browser fetch hits the local Ollama
+ * runtime at `http://127.0.0.1:11434` per `install.sh`'s
+ * `OLLAMA_HOST="127.0.0.1:11434"` + `OLLAMA_ORIGINS="*"` exports. No API key,
+ * no remote call, no prompt-injection surface (free-text fields are
+ * deliberately stripped before constructing the prompt).
+ */
+export interface AiSummary {
+  /** The summarized text returned by the model (2-3 sentences by prompt). */
+  text: string;
+  /** Ollama model tag -- e.g. "llama3.2:3b" per the install.sh catalog. */
+  model: string;
+  /** Number of threats sampled to construct this summary. */
+  threat_count: number;
+  /** Round-trip latency in milliseconds (fetch start -> response parsed). */
+  duration_ms: number;
+  /** ISO timestamp of when the response was received. */
+  generated_at: string;
+}
+
 // ----------------------------- Users / Profiles -------------------------
 
 export type UserRole = 'admin' | 'viewer';
