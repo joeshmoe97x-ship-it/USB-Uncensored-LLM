@@ -12,16 +12,24 @@ on:
     branches: ['main', 'v2.7-v2.8-stacked-archeology']  # narrow to protected branches for bounded CI cost; PR-target gate covers feature branches
     paths:
       - 'app/scripts/install-smoke-test.sh'
+      - 'app/scripts/check-manual-drift.sh'
+      - 'app/.githooks/pre-commit'
+      - 'app/.githooks/commit-msg'
       - '.github/workflows/install-smoke.yml'
       - 'app/docs/ops-notes.md'
       - 'docs/bug-diagnoses.md'
+      - 'audit_script.sh'
   pull_request:
     branches: [main, v2.7-v2.8-stacked-archeology]
     paths:
       - 'app/scripts/install-smoke-test.sh'
+      - 'app/scripts/check-manual-drift.sh'
+      - 'app/.githooks/pre-commit'
+      - 'app/.githooks/commit-msg'
       - '.github/workflows/install-smoke.yml'
       - 'app/docs/ops-notes.md'
       - 'docs/bug-diagnoses.md'
+      - 'audit_script.sh'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -54,6 +62,19 @@ jobs:
 
       - name: run install-snippet smoke test
         run: bash app/scripts/install-smoke-test.sh
+
+
+
+      - name: MANUALCHANGES-VS-USER-SPEC drift gate (v3.1.5.3)
+        if: success()
+        run: |
+          # Compare HEAD's audit_script.sh to working-tree; fail on documented-undoc'd drift.
+          # (CI is the post-merge layer — we don't gate on commit-msg, only the spec value drifts.)
+          set -euo pipefail
+          SPEC_TMP=$(mktemp -p "${TMPDIR:-/tmp}" -t audit-spec-XXXXXX.sh)
+          trap 'rm -f "$SPEC_TMP"' EXIT
+          git show HEAD:audit_script.sh > "$SPEC_TMP"
+          MODE=ci             SPEC_FILE="$SPEC_TMP"             CURRENT_FILE="$GITHUB_WORKSPACE/audit_script.sh"             bash "$GITHUB_WORKSPACE/app/scripts/check-manual-drift.sh"
 
       - name: emit sentinel summary on success
         if: success()

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Provenance: introduced by `THIS_COMMIT` (audit-chain adoption v3.1.5.3).
+# Tripod Closure: see `../docs/ops-notes.md` ## Operational notes + ## Adopted: archeology-cycle meta-extension (v3.1.5).
+# Anchor Covenant: forwards `audit_script.sh` drift detection onto a HARD-FAIL gate that reads the pending commit message
+# ($1 = commit-msg-file path) and requires each drifted anchor's literal label to appear in the message body OR the
+# drift to be reverted before commit; complements the pre-commit informational warning + the post-merge CI safety net.
+# Disambiguation: validation tool (commit-msg hook fires only on `git commit` AFTER the user types `:wq` in editor
+# and the msg-file is finalized); receives commit-msg-file path as $1; bypass via `--no-verify` is git-side, not script-side
+# (and skips this hook + pre-commit alike; the post-merge CI drift-gate is the only non-bypassable layer).
+# Tag Chain: synced with audit-cycle tag chain.
+# ----------------------------------------------------------------------------
+set -euo pipefail
+
+if [ "${1:-}" = "" ]; then
+  echo "commit-msg: missing commit-msg-file arg" >&2
+  exit 2
+fi
+
+# v3.1.5.3: MANUALCHANGES-VS-USER-SPEC hard-fail drift gate
+MODE=commit-msg \
+  COMMIT_MSG_FILE="$1" \
+  CURRENT_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/audit_script.sh" \
+  bash "$(git rev-parse --show-toplevel 2>/dev/null)/app/scripts/check-manual-drift.sh"

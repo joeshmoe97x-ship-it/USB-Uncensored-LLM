@@ -22,3 +22,10 @@ if [ -n "${LEAKS:-}" ]; then
 fi
 
 exit 0
+
+# v3.1.5.3: MANUALCHANGES-VS-USER-SPEC drift warning (informational)
+# See `../scripts/check-manual-drift.sh` for the drift anchor registry.
+# Pre-commit mode = developer-feedback layer only (no hard-fail).
+# The HARD-FAIL gate fires in `commit-msg` mode (after this script returns).
+MODE=pre-commit CURRENT_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/audit_script.sh" \
+  bash "$(git rev-parse --show-toplevel 2>/dev/null)/app/scripts/check-manual-drift.sh" || true
