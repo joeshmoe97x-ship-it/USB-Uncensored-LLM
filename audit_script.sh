@@ -212,13 +212,21 @@ rm -f /tmp/audit-v3151-fail.txt
   #     one level of nested brackets. Uses POSIX ERE capturing group `(...)` instead of PCRE
   #     non-capturing group `(?:...)` which `grep -E` does not support (minimal adaptation that
   #     achieves the same outcome as the user's proposed regex).
-  #   - v3.x.x forward-extension: bumped no_state_max from 1 to 2. The L1106 emission-surfaces
-  #     preservation contract (the v3.x audit-note state census ACTIVE-bucket canonical example
-  #     documented in the v3.0 extension COMMENT block above) + the v3.1.5 forward-extension-surface
-  #     tee-pipeline-mask invariant at app/docs/ops-notes.md L974 (parent H3 Adopted archeology-cycle
-  #     meta-extension (v3.1.5) block) are the 2 canonical active-contract (no-keyword) markers.
-  #     Both are intentionally authored without an explicit `-- STATE` keyword so they default
-  #     to the ACTIVE bucket via no-keyword fallthrough. Bump no_state_max=N->N+1 when an additional
+  #   - v3.x.x.1 docs-drift-fix forward-extension: bumped no_state_max from 1 to 3 (corrected from
+  #     the v3.x.x initial 1->2 bump which under-counted). The 3 canonical active-contract (no-keyword)
+  #     markers are:
+  #     (a) the row 18 emission-surfaces preservation contract at app/docs/ops-notes.md L957 (under
+  #         `#adopted-audit-note-nested-brackets-regex-hotfix-v3-0-1` H3 block; the prior `L1106`
+  #         raw L-reference was retired at the v3.1.4 GFM-slug-restructure cycle)
+  #     (b) the v3.x.x audit-cycle-extension tee-pipeline-mask invariant at app/docs/ops-notes.md L974
+  #         (under the `### Adopted: archeology-cycle meta-extension (v3.1.5)` parent H3 block;
+  #         documents the b490461 bash-level exit_code=0 limitation + acba90d/77c9b97 resolution)
+  #     (c) the audit-cycle-v3.1.5-followup forward-extension surface marker at app/docs/ops-notes.md
+  #         L988 (introduced at b490461; no-keyword by design)
+  #     All 3 are intentionally authored without an explicit `-- (OPEN|CLOSED|PENDING|RESOLVED)`
+  #     keyword so they default to the ACTIVE bucket via no-keyword fallthrough. The ACTIVE bucket
+  #     in the state-grouped audit-note census surfaces them at `sort -u` dedup-by-file count = 1
+  #     (all 3 live in app/docs/ops-notes.md). Bump no_state_max=N->N+1 when an additional
   #     active-contract marker is intentionally added going forward (forward-extension-surface
   #     invariant preserved by the audit-script chain grep-validation). See audit-script header
   #     L3/L5/L6 audit-chain enumeration for the cumulative cycle count.
