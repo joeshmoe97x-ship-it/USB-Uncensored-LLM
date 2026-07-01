@@ -258,6 +258,7 @@ mkdir -p /tmp/build-log
 #   - 16 = v2.7 baseline (rows 1..14 + sidecar-disable-config-adopted row 15 + adopted-cross-domain-header-rendering-check-extension-v2-5 row 16)
 #   - 17 = post-v2.9 incident-retro row addition (the audit-note #3 documented this bump in d75d527)
 #   - 18 = post-v3.0.1 hotfix inventory-row addition (the 18th row registers the audit-note nested-brackets regex hotfix inventory entry appended by THIS COMMIT)
+#   - 19 = post-v3.0.1.2 roadmap inventory-row addition (the 19th row registers the audit-cycle-v3.1 Roadmap H3 + INTENTIONAL inline -- OPEN proxy audit-note marker appended by THIS-COMMIT v3.0.1.2)
 # WARN fires if the count drifts outside this range, catching both:
 #   - deletion regression (count < 16): a row was removed without updating the inventory
 #   - future addition regression (count > 18): a v2.10+ row was added without updating the sentinel
