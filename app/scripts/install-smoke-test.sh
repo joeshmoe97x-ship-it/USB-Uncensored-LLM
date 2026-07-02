@@ -45,6 +45,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AUTO_REPAIR_SNAP_FILE=""
 PERM_SNAP_FILE=""
 OWN_SNAP_FILE=""
+ACL_SNAP_FILE=""
 SELINUX_SNAP_FILE=""
 
 cleanup() {
@@ -235,6 +236,63 @@ _capture_xattr_snap() {
   done
   mv -f "$SNAP_TMP" "$XATTR_SNAP_FILE"
 }
+# v3.3.0.6.1: Capture POSIX ACLs for restoration on EXIT (closes the v3.3.0.6 dormancy gap).
+# Sibling to _capture_selinux_snap (which captures SELinux contexts), _capture_xattr_snap,
+# _capture_ownership_snap, _capture_perm_snap; all 5 write to a snap file consumed by the
+# corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tacl_entry`.
+# Uses `getfacl` (if available) to enumerate POSIX ACLs; parses per-entry lines into the
+# `user/group/mask/other:qualifier:perms` format consumed by setfacl -m in _restore_acl_snap.
+# Uses mktemp + atomic-rename pattern to avoid partial-write race conditions.
+# getfacl is Linux-only; skip gracefully (idempotent no-op) if not available.
+_capture_acl_snap() {
+  if ! command -v getfacl >/dev/null 2>&1; then
+    return 0
+  fi
+  ACL_SNAP_FILE="$(mktemp -t aclsnap-XXXXXX)"
+  local SNAP_TMP="${ACL_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f getfacl_output
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      # getfacl -p = no path prefix (avoids "# file: <path>" header lines); --omit-header
+      # suppresses the first 3 comment lines (file owner + mask + other comments); -n = no
+      # numeric uid/gid resolution (we want names for setfacl -m compatibility)
+      # getfacl -p = no path prefix; -n = no numeric uid/gid resolution (we want names for setfacl -m compatibility)
+      getfacl_output=$(getfacl -pn --omit-header "$f" 2>/dev/null)
+      if [ -n "$getfacl_output" ]; then
+        # Count non-empty, non-comment entries to detect non-minimal ACLs.
+        # Files WITHOUT explicit ACLs have exactly 3 entries (user::, group::, other::) which is
+        # the standard Unix permission representation -- restoring these via setfacl -m would
+        # transition the file from "no ACL" to "has minimal ACL" (a one-time behavioral change).
+        # Mirror the v3.3.0.8 SELinux "only capture non-default contexts" pattern: only capture
+        # files with MORE than 3 entries (i.e., files with explicit, non-minimal ACLs).
+        local entry_count=0
+        local captured_entries=()
+        while IFS= read -r line; do
+          [[ -z "$line" ]] && continue
+          [[ "$line" == \#* ]] && continue
+          # Validate format: must match POSIX ACL entry pattern (same as _restore_acl_snap)
+          if [[ "$line" =~ ^([ugo]:[a-zA-Z0-9_][a-zA-Z0-9_.-]*:|[ugo]::|[ugo]:[0-9]+:)[r-][w-][x-]$ ]]; then
+            entry_count=$((entry_count + 1))
+            captured_entries+=("$line")
+          fi
+        done <<< "$getfacl_output"
+        # Only write to snap if the file has non-minimal ACLs (>3 entries)
+        if [ "$entry_count" -gt 3 ]; then
+          for entry in "${captured_entries[@]}"; do
+            printf '%s\t%s\n' "$f" "$entry" >> "$SNAP_TMP"
+          done
+        fi
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$ACL_SNAP_FILE"
+}
 
 # v3.3.0.8: Capture SELinux file contexts for restoration on EXIT.
 # Sibling to _capture_xattr_snap (which captures xattrs), _capture_ownership_snap, _capture_perm_snap;
@@ -271,6 +329,8 @@ _capture_selinux_snap() {
 
 
 
+
+
 # Capture perms + ownership for restoration on EXIT.
 # Sibling to test_auto_repair_matrix (which captures symlinks); all 3 write to a snap
 # file consumed by the corresponding _restore_* helper at EXIT.
@@ -280,6 +340,8 @@ _capture_perm_snap
 _capture_ownership_snap
 # v3.3.0.5: Capture xattrs before any setfattr operations
 _capture_xattr_snap
+# v3.3.0.6.1: Capture POSIX ACLs before any setfacl operations (closes v3.3.0.6 dormancy gap; sibling to xattr capture)
+_capture_acl_snap
 # v3.3.0.8: Capture SELinux contexts before any restorecon operations
 _capture_selinux_snap
 
@@ -526,6 +588,7 @@ combined_cleanup() {
   _restore_perm_snap        # v3.3.0.3.1: Permission restoration (sibling to symlink restoration)
   _restore_ownership_snap   # v3.3.0.4: Ownership restoration (sibling to permission restoration)
   _restore_xattr_snap        # v3.3.0.5: xattr restoration (sibling to ownership restoration)
+  _restore_acl_snap               # v3.3.0.6.1: POSIX ACL restoration (closes v3.3.0.6 dormancy gap; sibling to xattr restoration)
   _restore_selinux_snap        # v3.3.0.8: SELinux context restoration (sibling to xattr restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
