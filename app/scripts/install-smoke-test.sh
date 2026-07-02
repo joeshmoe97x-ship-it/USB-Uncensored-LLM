@@ -45,6 +45,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AUTO_REPAIR_SNAP_FILE=""
 PERM_SNAP_FILE=""
 OWN_SNAP_FILE=""
+SELINUX_SNAP_FILE=""
 
 cleanup() {
   if [[ -d "${SMOKE_ROOT}" ]]; then
@@ -235,6 +236,40 @@ _capture_xattr_snap() {
   mv -f "$SNAP_TMP" "$XATTR_SNAP_FILE"
 }
 
+# v3.3.0.8: Capture SELinux file contexts for restoration on EXIT.
+# Sibling to _capture_xattr_snap (which captures xattrs), _capture_ownership_snap, _capture_perm_snap;
+# all 4 write to a snap file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tcontext_string`.
+# Uses `matchpathcon` (if available) to get the policy-default SELinux context for each file;
+# captures the current context (if non-default) for restoration. Uses mktemp + atomic-rename
+# pattern to avoid partial-write race conditions. matchpathcon is Linux-only; skip gracefully
+# (idempotent no-op) if not available.
+_capture_selinux_snap() {
+  if ! command -v matchpathcon >/dev/null 2>&1; then
+    return 0
+  fi
+  SELINUX_SNAP_FILE="$(mktemp -t selinuxsnap-XXXXXX)"
+  local SNAP_TMP="${SELINUX_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f default_ctx current_ctx
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      current_ctx=$(ls -ldZ "$f" 2>/dev/null | awk '{print $NF}')
+      default_ctx=$(matchpathcon "$f" 2>/dev/null | awk '{print $NF}')
+      # Only capture if current context differs from policy default (to avoid no-op restores)
+      if [ -n "$current_ctx" ] && [ -n "$default_ctx" ] && [ "$current_ctx" != "$default_ctx" ]; then
+        printf '%s\t%s\n' "$f" "$current_ctx" >> "$SNAP_TMP"
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$SELINUX_SNAP_FILE"
+}
+
+
 
 # Capture perms + ownership for restoration on EXIT.
 # Sibling to test_auto_repair_matrix (which captures symlinks); all 3 write to a snap
@@ -245,6 +280,8 @@ _capture_perm_snap
 _capture_ownership_snap
 # v3.3.0.5: Capture xattrs before any setfattr operations
 _capture_xattr_snap
+# v3.3.0.8: Capture SELinux contexts before any restorecon operations
+_capture_selinux_snap
 
 
 
@@ -419,6 +456,57 @@ _restore_cap_snap() {
   return 0
 }
 
+# v3.3.0.8 sibling helper: _restore_selinux_snap restores SELinux file contexts from a snap file.
+# Sibling to _restore_cap_snap (which restores Linux capabilities), _restore_acl_snap, _restore_xattr_snap,
+# _restore_ownership_snap, _restore_perm_snap; all 6 are called from the EXIT trap so per-test mutations
+# to host file SELinux-contexts/capabilities/ACLs/xattrs/perms/ownership are ALWAYS restored on
+# normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path\tcontext_string`.
+# 4 hardening items mirroring the v3.3.0.x.* patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) restorecon-availability guard +
+# context_string SELinux-context-format validation + EOF-safety guard.
+_restore_selinux_snap() {
+  set +e
+  [ -n "${SELINUX_SNAP_FILE}" ] && [ -r "${SELINUX_SNAP_FILE}" ] || return 0
+  # Both chcon (for non-default contexts) and restorecon (for policy-default restore) are needed.
+  # Check both up front; emit a single WARN and return 0 (idempotent no-op) if either is missing.
+  local missing_tools=""
+  command -v chcon >/dev/null 2>&1 || missing_tools="${missing_tools} chcon"
+  command -v restorecon >/dev/null 2>&1 || missing_tools="${missing_tools} restorecon"
+  if [ -n "${missing_tools}" ]; then
+    echo "WARN: missing SELinux tools${missing_tools}, skipping _restore_selinux_snap" >&2
+    return 0
+  fi
+  while IFS=$'\t\n\r' read -r file_path context_string; do
+    # EOF safety
+    [ -z "${file_path}" ] && continue
+    # Trailing-whitespace strip
+    file_path="${file_path% }"; file_path="${file_path%	}"
+    context_string="${context_string% }"; context_string="${context_string%	}"
+    # Absolute-path-only case glob + symlink-skip
+    case "${file_path}" in
+      /*) [ -L "${file_path}" ] && continue; [ -e "${file_path}" ] || continue; ;;
+      *) continue ;;
+    esac
+    # Empty context_string -> restore from policy default (no -t flag)
+    if [ -z "${context_string}" ]; then
+      restorecon "${file_path}" 2>/dev/null
+    else
+      # context_string SELinux-context-format validation: 4-field user:role:type[:mls] format
+      # Allows alphanumerics, underscores, commas, dashes, and dots (SELinux compartments use .c0,c1)
+      if [[ "${context_string}" =~ ^([a-zA-Z0-9_]+):([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)(:([a-zA-Z0-9_,\.-]+))?$ ]]; then
+        # Use chcon (not restorecon) to apply the CAPTURED (non-default) context.
+        # restorecon would re-apply the POLICY default, defeating the restore purpose.
+        chcon "${context_string}" "${file_path}" 2>/dev/null
+      else
+        echo "WARN: invalid SELinux context '${context_string}' for ${file_path}, skipping" >&2
+      fi
+    fi
+  done < "${SELINUX_SNAP_FILE}"
+  return 0
+}
+
+
 
 
 
@@ -438,6 +526,7 @@ combined_cleanup() {
   _restore_perm_snap        # v3.3.0.3.1: Permission restoration (sibling to symlink restoration)
   _restore_ownership_snap   # v3.3.0.4: Ownership restoration (sibling to permission restoration)
   _restore_xattr_snap        # v3.3.0.5: xattr restoration (sibling to ownership restoration)
+  _restore_selinux_snap        # v3.3.0.8: SELinux context restoration (sibling to xattr restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
