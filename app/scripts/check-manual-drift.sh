@@ -68,6 +68,8 @@ DRIFT_ANCHORS=(
   "validator_v3_3_0_x_x_x_x_x_x_regex|v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
   "validator_v3_3_0_x_x_x_x_x_x_x_regex|v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
   "validator_v3_3_0_x_x_x_x_x_x_x_x_regex|v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+  "validator_v3_3_0_x_x_x_x_x_x_x_x_x_regex|v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+  "sentinel_content_v3_3_0_x_x_x_x_x_x_x_x_x|v3\.3\.0\.x\.x\.x\.x\.x\.x\.x\.x\.x-FAIL"
   "sentinel_content_v3_3_0_x_x_x_x_x_x_x_x|v3\.3\.0\.x\.x\.x\.x\.x\.x\.x\.x-FAIL"
   "sentinel_content_v3_3_0_x_x_x_x_x_x_x|v3\.3\.0\.x\.x\.x\.x\.x\.x\.x-FAIL"
   "sentinel_content_v3_3_0_x_x_x_x_x_x|v3\.3\.0\.x\.x\.x\.x\.x\.x-FAIL"

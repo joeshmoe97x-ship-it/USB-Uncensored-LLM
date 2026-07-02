@@ -304,6 +304,23 @@ $file_result"
     echo "   (no .md files tracked by git)"
   fi
 
+  # v3.3.0.x.x.x.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-sub-cycle validator)
+  #   - sub-sub-sub-sub-sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+  #   - sentinel: "v3\.3\.0\.x\.x\.x\.x\.x\.x\.x\.x\.x-FAIL"
+  #   - pattern source: app/docs/ops-notes.md v3.3.0.10 marker (parent-H3 row 28 sub-bullet; sub-bullet addition,
+  #     inventory row count stable -- NOT bumped to 29 per the v3.1.5 forward-extension-surface convention)
+  #   - single-backslash awk regex (compiles to literal bracket/dot in awk's POSIX ERE; matches the v3.3.0.x.x.x.x.x.x.x.x.x's
+  #     9-deep digit-segment pattern specifically to prevent the v3.3.0.x.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-cycle
+  #     validator from being shadowed by the v3.3.0.x.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-sub-cycle validator)
+  if ! printf '%s\n' "${sentinels_unevaluated[@]:-}" | awk -v pattern='v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' 'BEGIN{exit !((ARGV[1] == "") || (ARGV[1] ~ "^v3\\.3\\.0\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))}' '' >/dev/null 2>&1; then
+    echo 'FATAL: v3.3.0.x.x.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-sub-sub-cycle validator regex is malformed' >&2
+    exit 12
+  fi
+  peer_row_v330_x_x_x_x_x_x_x_x_count=$(printf '%s\n' "${sentinels_unevaluated[@]:-}" | grep -cE 'v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
+  if [ "${peer_row_v330_x_x_x_x_x_x_x_x_count:-0}" -ge 0 ]; then
+    log 'INFO: v3.3.0.x.x.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-sub-sub-cycle peer-row registrations='"${peer_row_v330_x_x_x_x_x_x_x_x_count:-0}"' (expect 1 sentinel match: v3.3.0.x.x.x.x.x.x.x.x.x-FAIL)'
+  fi
+
   # v3.3.0.x.x.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-cycle validator)
   #   - sub-sub-sub-sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
   #   - sentinel: "v3\.3\.0\.x\.x\.x\.x\.x\.x\.x\.x-FAIL"

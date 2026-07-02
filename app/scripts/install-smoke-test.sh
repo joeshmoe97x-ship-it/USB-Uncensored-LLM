@@ -49,6 +49,7 @@ OWN_SNAP_FILE=""
 ACL_SNAP_FILE=""
 CAP_SNAP_FILE=""
 CHATTR_SNAP_FILE=""
+QUOTA_SNAP_FILE=""
 SELINUX_SNAP_FILE=""
 
 cleanup() {
@@ -375,6 +376,49 @@ _capture_chattr_snap() {
   mv -f "$SNAP_TMP" "$CHATTR_SNAP_FILE"
 }
 
+# v3.3.0.10: Capture filesystem quotas for restoration on EXIT.
+# Sibling to _capture_chattr_snap (which captures file attributes), _capture_cap_snap, _capture_acl_snap,
+# _capture_selinux_snap, _capture_xattr_snap, _capture_ownership_snap, _capture_perm_snap; all 8 write to a
+# snap file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tquota_string`.
+# Uses `repquota` (if available) to enumerate filesystem quotas; parses the quota fields from
+# repquata output. Quotas are filesystem-level, not file-level, so we capture the owning user/group
+# quota for each file (the user/group that owns the file may have a quota on the filesystem).
+# repquota/setquota are Linux-only; skip gracefully (idempotent no-op) if not available.
+_capture_quota_snap() {
+  if ! command -v repquota >/dev/null 2>&1; then
+    return 0
+  fi
+  QUOTA_SNAP_FILE="$(mktemp -t quotasnap-XXXXXX)"
+  local SNAP_TMP="${QUOTA_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f user_group quota_line
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      # Get the owning user:group of the file
+      user_group=$(stat -c '%U:%G' "$f" 2>/dev/null || echo "")
+      [ -z "$user_group" ] && continue
+      # Use repquota to get the quota for this user on the filesystem containing the file
+      # repquota output format: <user> -- <block-soft> <block-hard> <block-grace> <file-soft> <file-hard> <file-grace>
+      # We capture the line if the user has a non-zero quota (skip users with no quota = no-op restore)
+      quota_line=$(repquota -u -p 2>/dev/null | awk -v ug="$user_group" '$1 == ug { $1=""; sub(/^ /, ""); print; exit }')
+      if [ -n "$quota_line" ]; then
+        # Validate: quota_line should contain numbers (block-soft, block-hard, file-soft, file-hard)
+        if [[ "$quota_line" =~ ^[0-9]+\ +[0-9]+\ +[0-9]+\ +[0-9]+ ]] || \
+           [[ "$quota_line" =~ ^[0-9]+ ]]; then
+          printf '%s\t%s\t%s\n' "$f" "$user_group" "$quota_line" >> "$SNAP_TMP"
+        fi
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$QUOTA_SNAP_FILE"
+}
+
+
 
 
 # v3.3.0.8: Capture SELinux file contexts for restoration on EXIT.
@@ -431,6 +475,8 @@ _capture_cap_snap
 _capture_selinux_snap
 # v3.3.0.9: Capture file attributes before any chattr operations
 _capture_chattr_snap
+# v3.3.0.10: Capture filesystem quotas before any setquota operations
+_capture_quota_snap
 
 
 
@@ -647,6 +693,55 @@ _restore_chattr_snap() {
   return 0
 }
 
+# v3.3.0.10 sibling helper: _restore_quota_snap restores filesystem quotas from a snap file.
+# Sibling to _restore_chattr_snap (which restores file attributes), _restore_cap_snap, _restore_acl_snap,
+# _restore_xattr_snap, _restore_ownership_snap, _restore_perm_snap; all 7 are called from the EXIT trap so
+# per-test mutations to host filesystem quotas/attributes/capabilities/ACLs/xattrs/perms/ownership are
+# ALWAYS restored on normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path\tuser_group\tquota_string`.
+# 4 hardening items mirroring the v3.3.0.x.* patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) setquota-availability guard + user_group
+# POSIX-identifier validation + quota_string numeric-fields validation + EOF-safety guard.
+_restore_quota_snap() {
+  set +e
+  [ -n "${QUOTA_SNAP_FILE}" ] && [ -f "${QUOTA_SNAP_FILE}" ] || { rm -f "${QUOTA_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
+  # setquota is Linux-only and may not be available on all systems.
+  if ! command -v setquota >/dev/null 2>&1; then
+    echo "WARN: _restore_quota_snap: setquota not available on this system; skipping quota restoration" >&2
+    return 0
+  fi
+  local file_path="" user_group="" quota_string="" skip_count=0 restore_count=0
+  while IFS=$'\t\n\r' read -r file_path user_group quota_string || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    user_group="${user_group%"${user_group##*[![:space:]]}"}"
+    quota_string="${quota_string%"${quota_string##*[![:space:]]}"}"
+    [ -z "$file_path" ] || [ -z "$user_group" ] || [ -z "$quota_string" ] && { skip_count=$((skip_count+1)); continue; }
+    case "$file_path" in /*) ;; *) skip_count=$((skip_count+1)); continue ;; esac
+    [ ! -L "$file_path" ] || { skip_count=$((skip_count+1)); continue; }
+    # user_group must match POSIX identifier pattern (avoids shell-injection)
+    if ! [[ "$user_group" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*:[a-zA-Z0-9_][a-zA-Z0-9_.-]*$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    # quota_string must contain numeric fields (block-soft, block-hard, file-soft, file-hard)
+    if ! [[ "$quota_string" =~ ^[0-9]+(\ +[0-9]+){3,}$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    if setquota -u "$user_group" $quota_string "$file_path" 2>/dev/null; then
+      restore_count=$((restore_count+1))
+    else
+      skip_count=$((skip_count+1))
+    fi
+  done < "${QUOTA_SNAP_FILE}"
+  rm -f "${QUOTA_SNAP_FILE}.tmp" 2>/dev/null
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_quota_snap: restored $restore_count quotas, skipped $skip_count malformed entries" >&2
+  fi
+  return 0
+}
+
+
 
 # v3.3.0.8 sibling helper: _restore_selinux_snap restores SELinux file contexts from a snap file.
 # Sibling to _restore_cap_snap (which restores Linux capabilities), _restore_acl_snap, _restore_xattr_snap,
@@ -722,6 +817,7 @@ combined_cleanup() {
   _restore_cap_snap               # v3.3.0.7.1: Linux capability restoration (closes v3.3.0.7 dormancy gap; sibling to ACL restoration)
   _restore_selinux_snap        # v3.3.0.8: SELinux context restoration (sibling to xattr restoration)
   _restore_chattr_snap         # v3.3.0.9: chattr flag restoration (sibling to SELinux context restoration)
+  _restore_quota_snap           # v3.3.0.10: filesystem quota restoration (sibling to chattr flag restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
