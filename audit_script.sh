@@ -304,6 +304,52 @@ $file_result"
     echo "   (no .md files tracked by git)"
   fi
 
+  # v3.3.0.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x.x sub-sub-sub-sub-sub-cycle validator)
+  #   - sub-sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" (requires AT LEAST 6 dot-digit groups after v3.3.0)
+  #   - parent SLUG: same as v3.3.0 = `### Adopted: auto-symlink-helper (v3.3.0)`
+  #   - sentinel-write: writes "v3.3.0.x.x.x.x.x.x-FAIL" to /tmp/audit-v3151-fail.txt
+  echo
+  echo "-- v3.3.0.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-cycle validator --"
+  if [ -n "$md_files" ]; then
+    v330xxxxxx_violations=""
+    for f in $md_files; do
+      file_result=$(awk -v parent="### Adopted: auto-symlink-helper (v3.3.0)" '
+        BEGIN { in_parent = 0 }
+        {
+          if ($0 ~ /^### /) {
+            in_parent = ($0 == parent) ? 1 : 0
+          }
+          if (match($0, /\[audit-note: v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\[[^]]*\]|[^]])*\]/)) {
+            if (in_parent == 0) {
+              printf "%s:%d:%s\n", FILENAME, NR, $0
+            }
+          }
+        }
+      ' "$f" 2>/dev/null)
+      if [ -n "$file_result" ]; then
+        if [ -z "$v330xxxxxx_violations" ]; then
+          v330xxxxxx_violations="$file_result"
+        else
+          v330xxxxxx_violations="$v330xxxxxx_violations
+$file_result"
+        fi
+      fi
+    done
+    if [ -n "$v330xxxxxx_violations" ]; then
+      echo "$v330xxxxxx_violations"
+      echo
+      echo "   FAIL: v3.3.0.x.x.x.x.x.x audit-note marker detected OUTSIDE the parent H3 Adopted section." >&2
+      echo 'v3.3.0.x.x.x.x.x.x-FAIL' > /tmp/audit-v3151-fail.txt
+      exit 1
+    else
+      echo "   v3.3.0.x.x.x.x.x.x peer-row registrations: 0 (PASS)"
+    fi
+  else
+    echo "   (no .md files tracked by git)"
+  fi
+
+
+
   # v3.3.0.x.x.x.x.x: sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x sub-sub-sub-sub-cycle validator)
   #   - sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" (requires AT LEAST 5 dot-digit groups after v3.3.0)
   #   - parent SLUG: same as v3.3.0 = `### Adopted: auto-symlink-helper (v3.3.0)`

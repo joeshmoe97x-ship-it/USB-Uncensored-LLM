@@ -367,6 +367,59 @@ _restore_acl_snap() {
   return 0
 }
 
+# v3.3.0.7 sibling helper: _restore_cap_snap restores Linux file capabilities from a snap file.
+# Sibling to _restore_acl_snap (which restores POSIX ACLs), _restore_xattr_snap, _restore_ownership_snap, _restore_perm_snap;
+# all 5 are called from the EXIT trap so per-test mutations to host file capabilities/ACLs/xattrs/perms/ownership
+# are ALWAYS restored on normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path\tcap_string`.
+# 4 hardening items mirroring the v3.3.0.x.* patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) setcap-availability guard + cap_string
+# libcap2-format validation + EOF-safety guard.
+_restore_cap_snap() {
+  set +e
+  [ -n "${CAP_SNAP_FILE}" ] && [ -f "${CAP_SNAP_FILE}" ] || { rm -f "${CAP_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
+  # setcap/getcap are Linux-only and require libcap2-bin; may not be available on all systems.
+  if ! command -v setcap >/dev/null 2>&1; then
+    echo "WARN: _restore_cap_snap: setcap not available on this system; skipping capability restoration" >&2
+    return 0
+  fi
+  local file_path="" cap_string="" skip_count=0 restore_count=0
+  while IFS=$'\t\n\r' read -r file_path cap_string || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    cap_string="${cap_string%"${cap_string##*[![:space:]]}"}"
+    [ -z "$file_path" ] || [ -z "$cap_string" ] && { skip_count=$((skip_count+1)); continue; }
+    case "$file_path" in /*) ;; *) skip_count=$((skip_count+1)); continue ;; esac
+    [ ! -L "$file_path" ] || { skip_count=$((skip_count+1)); continue; }
+    # cap_string must match libcap2 capability-set format: <op><flag>[+/-]<cap>
+    # op: = (set), + (add), - (drop)
+    # flag: empty (effective), p (permitted), e (effective+inheritable)
+    # cap: cap_chown, cap_dac_override, cap_net_bind_service, cap_sys_admin, etc. (all start with cap_)
+    # Allow empty cap_string to mean "drop all capabilities" (setcap -r).
+    if [ -n "$cap_string" ] && ! [[ "$cap_string" =~ ^([=+-][pe]*)?cap_[a-z_]+$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    if [ -z "$cap_string" ]; then
+      # Empty cap_string = drop all capabilities
+      if setcap -r "$file_path" 2>/dev/null; then
+        restore_count=$((restore_count+1))
+      else
+        skip_count=$((skip_count+1))
+      fi
+    elif setcap "$cap_string" "$file_path" 2>/dev/null; then
+      restore_count=$((restore_count+1))
+    else
+      skip_count=$((skip_count+1))
+    fi
+  done < "${CAP_SNAP_FILE}"
+  rm -f "${CAP_SNAP_FILE}.tmp" 2>/dev/null
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_cap_snap: restored $restore_count capabilities, skipped $skip_count malformed entries" >&2
+  fi
+  return 0
+}
+
+
 
 
 
