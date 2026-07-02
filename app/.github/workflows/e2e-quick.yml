@@ -10,6 +10,13 @@ concurrency:
   group: quick-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+# [audit-note: vite preview smoke CI step deferred to v3.3.x -- STATE OPEN]
+# A `npm run build` + `npm run preview` smoke-test step would catch production-build
+# regressions before the heavier full-e2e suite runs. Deferred because (a) preview-port
+# bind conflicts with the existing quick-ts-check infrastructure, (b) build-output
+# portability requires explicit `serve_dist` workflow (out of scope for the component-only
+# quick path's <5min budget). Track at the v3.3.x deployment-guide roadmap.
+
 jobs:
   quick:
     name: Component-only smoke

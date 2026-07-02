@@ -3,8 +3,12 @@
 # Provenance: introduced by `935d9dc` (single-commit file, audit-chain adoption v1.8).
 # Tripod Closure: see `docs/bug-diagnoses.md` #bug-c (admin profile.role trigger race on capture-v6 cold-start).
 # Anchor Covenant (CLI): depends on `supabase status --json` keys `API_URL` + `SERVICE_ROLE_KEY`.
-# Disambiguation: canonical execution path defaults to admin@omnisight.local; no script variants.
-# Tag Chain: synced as of audit-cycle-v1.8.
+# Disambiguation: canonical execution path defaults to admin@omnisight.local; v3.2.0 added the
+#   `ALLOW_INSECURE_DEFAULT=1` opt-in variant for local dev / CI bypass of the production-safety
+#   guard (refuses to bootstrap if ADMIN_PASSWORD is unset / empty / on the leaked-defaults trio
+#   admin123|password|changeme, exits 5). Without the opt-in, production deployers MUST set the
+#   ADMIN_PASSWORD env var explicitly. Treat `ALLOW_INSECURE_DEFAULT=1` as local-dev/CI-only.
+# Tag Chain: synced as of audit-cycle-v3.2.0 (security-only sub-cycle, replaces v1.8).
 # ----------------------------------------------------------------------------
 # Bootstrap the first admin user for the local Supabase stack.
 # Reads API_URL + SERVICE_ROLE_KEY from `supabase status --output json`.
@@ -39,7 +43,31 @@ if [ -z "$URL" ] || [ -z "$KEY" ]; then
 fi
 
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@omnisight.local}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
+# v3.2.0: production-safety guard. Refuse to bootstrap if ADMIN_PASSWORD is
+# (a) unset, (b) empty, OR (c) literal-equals one of the leaked-defaults trio.
+# Bypass opt-in via `ALLOW_INSECURE_DEFAULT=1` for local dev / CI (where the
+# default is convention and intentional) — explicit non-leaked env-var still
+# works without the opt-in. Defense in depth: do NOT weaken the local-dev
+# default; force production deployers to set a real password.
+# v3.2.0 hotfix: previous guard used `[ -z "${ADMIN_PASSWORD+x}" ]` which
+# catches ONLY unset — an explicit `ADMIN_PASSWORD=""` slipped through to
+# create_user with an empty password, which Supabase Auth accepts in some
+# configurations. Tightened to `${ADMIN_PASSWORD:+set}` which reports the
+# actual set-state via '+set' (vs. empty string for unset), then evaluates
+# `[ -z "$ADMIN_PASSWORD" ]` for the empty-string case. Same logic applies
+# to leaked-defaults literal-match.
+if [ -z "${ADMIN_PASSWORD:+set}" ] || [ -z "$ADMIN_PASSWORD" ]; then
+  if [ "${ALLOW_INSECURE_DEFAULT:-0}" != "1" ]; then
+    echo "[bootstrap] ADMIN_PASSWORD is unset or empty and would default to the leaked 'admin123' string. Refusing. Set ADMIN_PASSWORD=<your-prod-password>, or set ALLOW_INSECURE_DEFAULT=1 for local dev / CI." >&2
+    exit 5
+  fi
+  ADMIN_PASSWORD="admin123"
+elif [ "$ADMIN_PASSWORD" = "admin123" ] || [ "$ADMIN_PASSWORD" = "password" ] || [ "$ADMIN_PASSWORD" = "changeme" ]; then
+  if [ "${ALLOW_INSECURE_DEFAULT:-0}" != "1" ]; then
+    echo "[bootstrap] ADMIN_PASSWORD='$ADMIN_PASSWORD' is on the leaked-defaults list. Refusing. Set a real password or ALLOW_INSECURE_DEFAULT=1." >&2
+    exit 5
+  fi
+fi
 ADMIN_NAME="${ADMIN_NAME:-System Admin}"
 
 create_admin() {

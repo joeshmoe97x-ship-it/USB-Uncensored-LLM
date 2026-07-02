@@ -526,12 +526,12 @@ The user's closure loop (Phase 2 = temp-revert `?? FALLBACK` to bare `BRAND[cam.
      docker exec -u root supabase_kong_Linux sh -c "grep -qE \"[[:space:]]${h}(\\\$|[[:space:]])\" /etc/hosts || echo '${REST_IP} ${h}' >> /etc/hosts"
    done
    ```
-2. **Migrations symlink + db reset**. `supabase/migrations/` does not exist by default in this repo; migrations live at `app/supabase/migrations/`. Without the symlink, `supabase db reset` applies zero migrations, and `public.cameras` doesn't exist, so the bug-e spec's service-role seed INSERT fails with `PGRST205 Could not find the table 'public.cameras' in the schema cache` BEFORE the BRAND TypeError can fire:
+2. **Migrations path + db reset**. The canonical git-tracked migrations live at `app/supabase/migrations/` (NOT at the gitignored `supabase/` ephemeral working dir, which is created fresh by `supabase start`). Byte-identity check: `app/supabase/migrations/*.sql` and `supabase/migrations/*.sql` are SHA256-identical at HEAD (`app/supabase/migrations/20250101000000_init_schema.sql` and `20250101000001_grant_public_table_access.sql` are git-tracked; the `supabase/` copies fall under the `supabase/.gitignore` + the project-root `.gitignore`'s `supabase/` entry and are not under source-control). For `supabase db reset` to apply the migrations, a CWD-relative `supabase/migrations` lookup must succeed; the conventional fix on a fresh host is the symlink created by the empirical-closure prerequisites block below, which is recreate-per-session until the v3.3.x auto-symlink helper lands. `public.cameras` (and the rest of the schema) only exists after migrations apply; without the symlink (or without `cd $L/app && supabase db reset --no-seed`, which uses the canonical app-relative path), the bug-e spec's service-role seed INSERT fails with `PGRST205 Could not find the table 'public.cameras' in the schema cache` BEFORE the BRAND TypeError can fire:
    ```bash
-   ln -s $L/app/supabase/migrations $L/supabase/migrations
+   ln -s $L/app/supabase/migrations $L/supabase/migrations   # OR: cd $L/app && supabase db reset --no-seed
    supabase db reset --no-seed
    ```
-   The symlink is gitignored (it lives in `supabase/` which is in `.gitignore`); recreate per session.
+   The symlink (or the `cd $L/app` pairing) is gitignored; recreate per session. [audit-note: auto-symlink-helper (wraps `ln -s $L/app/supabase/migrations $L/supabase/migrations` into a host-bootstrap step) deferred to v3.3.x -- STATE OPEN].
 3. **Vite kill + cache nuke**. To force vite to pick up the reverted file at L132. The harness's `[A]` step kills prior vite, but a stale `node_modules/.vite` cache can serve a stale module graph in dev mode:
    ```bash
    pkill -9 -f vite; pkill -9 -f esbuild; pkill -9 -f 'npm run dev'

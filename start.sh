@@ -30,7 +30,15 @@ export OLLAMA_HOME="$OLLAMA_RUNTIME"
 export OLLAMA_TMPDIR="$OLLAMA_RUNTIME/tmp"
 export OLLAMA_ORIGINS="*"
 export OLLAMA_HOST="127.0.0.1:11434"
+# [audit-note: --lan flag deferred to v3.3.x -- STATE OPEN]
+# Without --lan, OLLAMA_HOST binds IPv4 loopback only (single-user portable USB).
+# Exposing uncensored models to a multi-user LAN via 0.0.0.0 requires: (a) a
+# explicit opt-in env-var (e.g. USB_LAN_BIND=1), (b) TLS termination before the chat
+# server, (c) per-session trusted-LAN credential surface. Deferred to v3.3.x because
+# the zero-trust-LAN uncensored-LLM exposure risk outweighs the per-host convenience
+# of default LAN binding for the documented-portable USB use case.
 mkdir -p "$OLLAMA_RUNTIME/tmp"
+
 # -------------------------------------------------------
 
 # Check if the portable Linux engine is downloaded

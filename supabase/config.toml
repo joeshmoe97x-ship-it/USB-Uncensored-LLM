@@ -3,6 +3,12 @@
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
 project_id = "Linux"
+# [audit-note: envsubst-based production config swap deferred to v3.3.x -- STATE OPEN]
+# This config.toml is the local-dev (Supabase CLI 2.107.0) baseline. Production deployments
+# should run `envsubst < supabase/config.toml.production | supabase config push` against
+# a templated copy with $PROJECT_REF, $SITE_URL, $ADDITIONAL_REDIRECT_URLS, etc. replaced
+# at deploy time. The current static `site_url = "http://127.0.0.1:3000"` line is local-dev-
+# correct; production-ready envsubst template + Supabase CLI `config push` workflow TBD.
 
 [api]
 enabled = true
@@ -21,6 +27,12 @@ max_rows = 1000
 # without explicit GRANTs. When unset, new entities are NOT auto-exposed, matching the new cloud
 # default. Set to `true` to keep the legacy behaviour of auto-exposing new entities; this is
 # deprecated and the field is removed on 2026-10-30 once the always-revoked behaviour is permanent.
+#
+# v3.2.x comment: deprecation timeline is 2026-10-30; pin the field to `true` until then (per
+# Supabase Cloud parity contract). After that date, the line MUST be removed AND every
+# migration's `grant execute on functions ... from anon, authenticated, service_role` revoke
+# line MUST be replaced with the new cloud-default revoke-cascade shape. Track at the
+# arch/2026-q4 rewiring cycle (deferred -- STATE OPEN).
 auto_expose_new_tables = true
 
 [api.tls]

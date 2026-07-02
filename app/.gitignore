@@ -26,6 +26,11 @@ dist-ssr
 .vercel
 
 .env
+# v3.2.0: production env-vars (real API_URL + anon key) — gitignored defensively;
+# canonical template lives at app/.env.production.example. Bare `.env.production`
+# pattern matches the file exactly without affecting `.env.production.example`
+# (the .example sibling stays TRACKED as the documented source-of-truth template).
+.env.production
 supabase/.temp/
 
 # --- tidy pre-capture-v6 (audit fix) ---

@@ -51,8 +51,16 @@ fi
 
 if [ ! -f "$CONFIG_QUERY" ]; then
     echo -e "${RED}ERROR: Missing shared config query script: $CONFIG_QUERY${RST}"
+    echo -e "${DGR}(Shared/ subtree must sit next to Linux/ on the USB; canonical URL TBD.)${RST}"
     exit 1
 fi
+# [audit-note: Shared/ canonical-URL resolution deferred to v3.3.x -- STATE OPEN]
+# Today the install fail-fast emits an ERROR + exit 1, telling the user to re-provision
+# the Shared/ subtree manually. The catch-up step is to emit a DownloadURL hint pointing
+# at the canonical USB-delivery bundle's shared-subtree payload (so a fresh-host user
+# can re-fetch Shared/ online without re-downloading the entire 6GB image). Requires
+# agreement on what counts as canonical (e.g. a fixed GitHub release asset or a
+# hash-pinned snapshot URL); out of scope for v3.2.x.
 
 eval "$("$PYTHON_CMD" "$CONFIG_QUERY" models-shell desktop)"
 
