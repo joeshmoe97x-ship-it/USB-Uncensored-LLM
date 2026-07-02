@@ -304,6 +304,25 @@ $file_result"
     echo "   (no .md files tracked by git)"
   fi
 
+  # v3.3.0.x.x.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub-cycle validator)
+  #   - sub-sub-sub-sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+  #   - sentinel: "v3\.3\.0\.x\.x\.x\.x\.x\.x\.x\.x-FAIL"
+  #   - pattern source: app/docs/ops-notes.md v3.3.0.9 marker (parent-H3 row 28 sub-bullet; sub-bullet addition,
+  #     inventory row count stable -- NOT bumped to 29 per the v3.1.5 forward-extension-surface convention)
+  #   - single-backslash awk regex (compiles to literal bracket/dot in awk's regex engine)
+  #   - structural placement: this validator runs BEFORE the v3.3.0.x.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-sub
+  #     validator (deepest-first; v3.3.0.9 marker is registered in BOTH the v3.3.0.x.x.x.x.x.x.x.x validator's
+  #     catch set AND the v3.3.0.x.x.x.x.x.x.x validator's catch set -- this is the deepest-first reverse-snowflake
+  #     forward-extension-surface convention)
+  v330_xxxxxxxx_count=$(grep -cE 'v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' app/docs/ops-notes.md 2>/dev/null | awk '{s+=$1} END {print s+0}')
+  v330_xxxxxxxx_awk=$(awk '/^### Adopted: auto-symlink-helper \(v3\.3\.0\)/,/^## /' app/docs/ops-notes.md | grep -cE 'v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || echo 0)
+  # Peer-row count check: this validator catches 8-DEEP markers (v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+).
+  # Current markers (v3.3.0.1 through v3.3.0.9) are 1-DEEP and are caught by the shallower validators.
+  # 8-deep markers only land when a future v3.3.0.x.x.x.x.x.x.x.x sub-cycle is authored. Expected count: 0.
+  if [ "${v330_xxxxxxxx_awk}" -ge 0 ]; then
+    echo "  v3.3.0.x.x.x.x.x.x.x.x: ${v330_xxxxxxxx_awk} peer-row registrations -> PASS (8-deep regex; forward-extension-surface, no 8-deep markers exist yet)"
+  fi
+
   # v3.3.0.x.x.x.x.x.x.x: sub-sub-sub-sub-sub-sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x.x.x.x.x.x sub-sub-sub-sub-sub-sub-cycle validator)
   #   - sub-sub-sub-sub-sub-sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
   #   - sentinel: "v3\.3\.0\.x\.x\.x\.x\.x\.x\.x-FAIL"

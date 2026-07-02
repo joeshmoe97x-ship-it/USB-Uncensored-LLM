@@ -47,6 +47,7 @@ PERM_SNAP_FILE=""
 OWN_SNAP_FILE=""
 ACL_SNAP_FILE=""
 CAP_SNAP_FILE=""
+CHATTR_SNAP_FILE=""
 SELINUX_SNAP_FILE=""
 
 cleanup() {
@@ -333,6 +334,47 @@ _capture_cap_snap() {
   mv -f "$SNAP_TMP" "$CAP_SNAP_FILE"
 }
 
+# v3.3.0.9: Capture file attributes (chattr flags) for restoration on EXIT.
+# Sibling to _capture_cap_snap (which captures Linux capabilities), _capture_acl_snap, _capture_selinux_snap,
+# _capture_xattr_snap, _capture_ownership_snap, _capture_perm_snap; all 7 write to a snap file consumed by
+# the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tattr_string`.
+# Uses `lsattr` (if available) to enumerate file attributes; parses the attr flags from lsattr output.
+# lsattr/chattr are Linux-only; skip gracefully (idempotent no-op) if not available.
+_capture_chattr_snap() {
+  if ! command -v lsattr >/dev/null 2>&1; then
+    return 0
+  fi
+  CHATTR_SNAP_FILE="$(mktemp -t chattrsnap-XXXXXX)"
+  local SNAP_TMP="${CHATTR_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f lsattr_output attr_string
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      # lsattr output format: `<attr_flags> <path>` where attr_flags is a 17-char string like
+      # `--------------e---` (default, extents flag `e` is always set on ext4) or
+      # `----i---------e---` (immutable flag `i` set). We must EXCLUDE the `e` flag from the
+      # "non-default" check because `e` is always set on ext4 and would match every file,
+      # defeating the "only capture non-default" pattern. Use `lsattr` (no -d) to get the file's
+      # own attributes; `-d` would be needed only for directories.
+      lsattr_output=$(lsattr "$f" 2>/dev/null | awk -v fp="$f" '$2 == fp { $1=""; sub(/^ /, ""); print; exit }')
+      if [ -n "$lsattr_output" ]; then
+        # Single, clear check: attr_string must be a sequence of '-' or valid chattr flag chars,
+        # AND must contain at least one "real" set flag (excluding `e` which is always set on ext4).
+        if [[ "$lsattr_output" =~ ^[-aAcCdDeFiPsStTu]+$ ]] && echo "$lsattr_output" | grep -qE '[aAcCdDiPsStTu]'; then
+          printf '%s\t%s\n' "$f" "$lsattr_output" >> "$SNAP_TMP"
+        fi
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$CHATTR_SNAP_FILE"
+}
+
+
 
 # v3.3.0.8: Capture SELinux file contexts for restoration on EXIT.
 # Sibling to _capture_xattr_snap (which captures xattrs), _capture_ownership_snap, _capture_perm_snap;
@@ -386,6 +428,8 @@ _capture_acl_snap
 _capture_cap_snap
 # v3.3.0.8: Capture SELinux contexts before any restorecon operations
 _capture_selinux_snap
+# v3.3.0.9: Capture file attributes before any chattr operations
+_capture_chattr_snap
 
 
 
@@ -560,6 +604,49 @@ _restore_cap_snap() {
   return 0
 }
 
+# v3.3.0.9 sibling helper: _restore_chattr_snap restores Linux file attributes (chattr flags) from a snap file.
+# Sibling to _restore_cap_snap (which restores Linux capabilities), _restore_acl_snap, _restore_xattr_snap,
+# _restore_ownership_snap, _restore_perm_snap; all 6 are called from the EXIT trap so per-test mutations
+# to host file attributes/capabilities/ACLs/xattrs/perms/ownership are ALWAYS restored on normal-return OR
+# signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path\tattr_string`.
+# 4 hardening items mirroring the v3.3.0.x.* patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) chattr-availability guard + attr_string
+# chattr-flags validation + EOF-safety guard.
+_restore_chattr_snap() {
+  set +e
+  [ -n "${CHATTR_SNAP_FILE}" ] && [ -f "${CHATTR_SNAP_FILE}" ] || { rm -f "${CHATTR_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
+  # chattr is Linux-only and may not be available on all systems (e.g., macOS, minimal containers).
+  if ! command -v chattr >/dev/null 2>&1; then
+    echo "WARN: _restore_chattr_snap: chattr not available on this system; skipping chattr restoration" >&2
+    return 0
+  fi
+  local file_path="" attr_string="" skip_count=0 restore_count=0
+  while IFS=$'\t\n\r' read -r file_path attr_string || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    attr_string="${attr_string%"${attr_string##*[![:space:]]}"}"
+    [ -z "$file_path" ] || [ -z "$attr_string" ] && { skip_count=$((skip_count+1)); continue; }
+    case "$file_path" in /*) ;; *) skip_count=$((skip_count+1)); continue ;; esac
+    [ ! -L "$file_path" ] || { skip_count=$((skip_count+1)); continue; }
+    # attr_string must match chattr flag format: sequence of '-' or valid flag chars
+    if ! [[ "$attr_string" =~ ^[-aAcCdDeFiPsStTu]+$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    if chattr "$attr_string" "$file_path" 2>/dev/null; then
+      restore_count=$((restore_count+1))
+    else
+      skip_count=$((skip_count+1))
+    fi
+  done < "${CHATTR_SNAP_FILE}"
+  rm -f "${CHATTR_SNAP_FILE}.tmp" 2>/dev/null
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_chattr_snap: restored $restore_count chattr flags, skipped $skip_count malformed entries" >&2
+  fi
+  return 0
+}
+
+
 # v3.3.0.8 sibling helper: _restore_selinux_snap restores SELinux file contexts from a snap file.
 # Sibling to _restore_cap_snap (which restores Linux capabilities), _restore_acl_snap, _restore_xattr_snap,
 # _restore_ownership_snap, _restore_perm_snap; all 6 are called from the EXIT trap so per-test mutations
@@ -633,6 +720,7 @@ combined_cleanup() {
   _restore_acl_snap               # v3.3.0.6.1: POSIX ACL restoration (closes v3.3.0.6 dormancy gap; sibling to xattr restoration)
   _restore_cap_snap               # v3.3.0.7.1: Linux capability restoration (closes v3.3.0.7 dormancy gap; sibling to ACL restoration)
   _restore_selinux_snap        # v3.3.0.8: SELinux context restoration (sibling to xattr restoration)
+  _restore_chattr_snap         # v3.3.0.9: chattr flag restoration (sibling to SELinux context restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
