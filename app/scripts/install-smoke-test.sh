@@ -324,6 +324,50 @@ _restore_xattr_snap() {
   return 0
 }
 
+# v3.3.0.6 sibling helper: _restore_acl_snap restores POSIX ACLs from a snap file.
+# Sibling to _restore_xattr_snap (which restores xattrs), _restore_ownership_snap, _restore_perm_snap;
+# all 4 are called from the EXIT trap so per-test mutations to host file ACLs/xattrs/perms/ownership
+# are ALWAYS restored on normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path	acl_entry`.
+# 4 hardening items mirroring the v3.3.0.x.* patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) setfacl-availability guard + acl_entry
+# POSIX-ACL-format validation + EOF-safety guard.
+_restore_acl_snap() {
+  set +e
+  [ -n "${ACL_SNAP_FILE}" ] && [ -f "${ACL_SNAP_FILE}" ] || { rm -f "${ACL_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
+  # setfacl is Linux-only and may not be available on all systems (e.g., macOS, minimal containers).
+  if ! command -v setfacl >/dev/null 2>&1; then
+    echo "WARN: _restore_acl_snap: setfacl not available on this system; skipping ACL restoration" >&2
+    return 0
+  fi
+  local file_path="" acl_entry="" skip_count=0 restore_count=0
+  while IFS=$"\t\n\r" read -r file_path acl_entry || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    acl_entry="${acl_entry%"${acl_entry##*[![:space:]]}"}"
+    [ -z "$file_path" ] || [ -z "$acl_entry" ] && { skip_count=$((skip_count+1)); continue; }
+    case "$file_path" in /*) ;; *) skip_count=$((skip_count+1)); continue ;; esac
+    [ ! -L "$file_path" ] || { skip_count=$((skip_count+1)); continue; }
+    # acl_entry must match POSIX ACL format: <type>:<qualifier>:<perms>
+    # type: user/u, group/g, mask/m, other/o; qualifier optional (empty for owner/group/mask/other, or name/uid for named)
+    # perms: rwx pattern (e.g., rwx, r--, ---)
+    if ! [[ "$acl_entry" =~ ^([ugo]:[a-zA-Z0-9_][a-zA-Z0-9_.-]*:|[ugo]::|[ugo]:[0-9]+:)[r-][w-][x-]$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    if setfacl -m "$acl_entry" "$file_path" 2>/dev/null; then
+      restore_count=$((restore_count+1))
+    else
+      skip_count=$((skip_count+1))
+    fi
+  done < "${ACL_SNAP_FILE}"
+  rm -f "${ACL_SNAP_FILE}.tmp" 2>/dev/null
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_acl_snap: restored $restore_count ACL entries, skipped $skip_count malformed entries" >&2
+  fi
+  return 0
+}
+
+
 
 
 
