@@ -10,7 +10,11 @@
 //   revoke_access { camera_id, user_id }
 //
 // Local dev:  supabase functions serve admin-users      (no deploy needed)
-// Remote:     supabase functions deploy admin-users --no-verify-jwt
+// Remote:     supabase functions deploy admin-users      (JWT verify ENABLED by default;
+//            the function's internal assertAdmin() + getUser() check is the canonical gate;
+//            the prior --no-verify-jwt flag was a dev-path leftover that should NOT be
+//            propagated to production — defense-in-depth removes a single point of failure
+//            if the internal getUser() check is ever bypassed by a future contributor)
 //
 // The function does its own JWT validation via getUser().
 
