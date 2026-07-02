@@ -341,7 +341,7 @@ _restore_acl_snap() {
     return 0
   fi
   local file_path="" acl_entry="" skip_count=0 restore_count=0
-  while IFS=$"\t\n\r" read -r file_path acl_entry || [ -n "$file_path" ]; do
+  while IFS=$'\t\n\r' read -r file_path acl_entry || [ -n "$file_path" ]; do
     file_path="${file_path%"${file_path##*[![:space:]]}"}"
     acl_entry="${acl_entry%"${acl_entry##*[![:space:]]}"}"
     [ -z "$file_path" ] || [ -z "$acl_entry" ] && { skip_count=$((skip_count+1)); continue; }
