@@ -291,7 +291,14 @@ rm -f /tmp/audit-v3151-fail.txt
           if ($0 ~ /^### /) {
             in_parent = ($0 == parent) ? 1 : 0
           }
-          if (match($0, /\[audit-note(\[[^]]*\]|[^]])*v3\.3\.[0-9]+(\[[^]]*\]|[^]])*\]/)) {
+          # v3.3.x validator: parent-declaration-anchored regex (only catches markers whose
+          # SUBJECT is v3.3.<digit>+ — i.e. `[audit-note: v3.3.0 ...]` openings — and NOT
+          # cross-references from other audit-notes that mention v3.3.x in their body).
+          # previously: substring-match `v3\.3\.[0-9]+` anywhere in body caught cross-references
+          # from v3.3.0 marker body that legitimately cites v3.1.5.2 / v3.1.5.1.1 as archeology
+          # recipe precedents, producing false-positive FAILs. Anchoring on `[audit-note: v3\.3\.`
+          # restores parent-scoped semantics: only DECLARATIONS are subject to the parent-H3 gate.
+          if (match($0, /\[audit-note: v3\.3\.[0-9]+(\.[0-9]+)*(\[[^]]*\]|[^]])*\]/)) {
             if (in_parent == 0) {
               printf "%s:%d:%s\n", FILENAME, NR, $0
             }
@@ -345,7 +352,14 @@ $file_result"
           if ($0 ~ /^### /) {
             in_parent = ($0 == parent) ? 1 : 0
           }
-          if (match($0, /\[audit-note(\[[^]]*\]|[^]])*v3\.1\.5\.2(\.[0-9]+)?(\[[^]]*\]|[^]])*\]/)) {
+          # v3.1.5.2 validator: parent-declaration-anchored regex (only catches markers whose
+          # SUBJECT is v3.1.5.2 + optional sub-sub-cycles — i.e. `[audit-note: v3.1.5.2 ...]`
+          # openings — and NOT cross-references from other audit-notes that mention v3.1.5.2 in
+          # their body). previously: substring-match caught cross-references from v3.3.0 marker
+          # body (which legitimately cites v3.1.5.2 as the SHARED-sentinel-filename recipe
+          # antecedent), producing false-positive FAILs. Anchoring on `[audit-note: v3\.1\.5\.2`
+          # restores parent-scoped semantics: only DECLARATIONS are subject to the parent-H3 gate.
+          if (match($0, /\[audit-note: v3\.1\.5\.2(\.[0-9]+)*(\[[^]]*\]|[^]])*\]/)) {
             if (in_parent == 0) {
               printf "%s:%d:%s\n", FILENAME, NR, $0
             }
@@ -419,7 +433,14 @@ $file_result"
           if ($0 ~ /^### /) {
             in_parent = ($0 == parent) ? 1 : 0
           }
-          if (match($0, /\[audit-note(\[[^]]*\]|[^]])*v3\.1\.5\.[0-9]+(\[[^]]*\]|[^]])*\]/)) {
+          # v3.1.5.1 validator: parent-declaration-anchored regex (only catches markers whose
+          # SUBJECT is v3.1.5.<digit>+ — i.e. `[audit-note: v3.1.5.N ...]` openings for any N
+          # including sub-sub-cycles like v3.1.5.1.1). Cross-references from other audit-notes
+          # (e.g., v3.3.0 marker body mentioning v3.1.5 path-1 recipe precedents) are tolerated
+          # because the regex now requires v3.1.5.<digit>+ to immediately follow `[audit-note: `,
+          # which is the marker SUBJECT position. v3.1.5.2-specific violations are still caught
+          # by the narrower v3.1.5.2 sibling validator that runs BEFORE this one.
+          if (match($0, /\[audit-note: v3\.1\.5\.[0-9]+(\.[0-9]+)*(\[[^]]*\]|[^]])*\]/)) {
             if (in_parent == 0) {
               printf "%s:%d:%s\n", FILENAME, NR, $0
             }
