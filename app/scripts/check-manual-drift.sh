@@ -54,6 +54,10 @@ DRIFT_ANCHORS=(
   "inventory_count_range|\\[16, *[0-9]+\\]:"
   "validator_v3_1_5_1_regex|v3\\.1\\.5\\.[0-9]+"
   "validator_v3_1_5_2_regex|v3\\.1\\.5\\.2\\(.[0-9]+\\)?"
+  "validator_v3_3_regex|v3\\.3\\.[0-9]+"
+  "sentinel_path_leaf_v3_3|audit-v3151-fail\\.txt"
+  "sentinel_content_v3_3|v3\\.3\\.0-FAIL"
+  "parent_h3_v3_3|### Adopted: auto-symlink-helper \\(v3\\.3\\.0\\)"
   "post_tee_gate_dynamic_reader|cat.*audit-v3151-fail\\.txt"
 )
 
@@ -73,8 +77,18 @@ while [ $i -lt "${#DRIFT_ANCHORS[@]}" ]; do
   entry="${DRIFT_ANCHORS[$i]}"
   label="${entry%%|*}"
   regex="${entry#*|}"
-  spec_set=$(extract_anchor_set "$SPEC_FILE" "$regex")
-  current_set=$(extract_anchor_set "$CURRENT_FILE" "$regex")
+  # v3.3.0 self-fix: tolerate empty spec_set / current_set (which is expected behavior on
+  # initial adoption of NEW anchor entries whose regex has no matches in HEAD's
+  # audit_script.sh yet). Without the `|| true`, `grep` exit=1 (no matches) propagates
+  # through `pipefail` and triggers `set -e` abort BEFORE the loop body runs, masking the
+  # iteration over subsequent anchors and returning exit=1 from the script regardless of
+  # MODE (pre-commit / commit-msg / ci all exit 1 even when drift == 0). With `|| true`,
+  # the function returns 0 and the empty SET is pipe-pastable to the rest of the loop;
+  # this preserves the original contract (drift-vs-HEAD detection) while honoring the
+  # v3.1.5 INAUGURAL anchor-addition pattern (each NEW anchor starts as drift by design
+  # because spec_set is empty until the committing commit lands in HEAD).
+  spec_set=$(extract_anchor_set "$SPEC_FILE" "$regex" || true)
+  current_set=$(extract_anchor_set "$CURRENT_FILE" "$regex" || true)
   if [ "$spec_set" != "$current_set" ]; then
     DRIFT_COUNT=$((DRIFT_COUNT + 1))
     DRIFT_LABELS+=("$label")
