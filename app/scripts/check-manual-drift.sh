@@ -61,6 +61,10 @@ DRIFT_ANCHORS=(
   "post_tee_gate_dynamic_reader|cat.*audit-v3151-fail\\.txt"
   "validator_v3_3_0_x_regex|v3\\.3\\.0\\.[0-9]+"
   "sentinel_content_v3_3_0_x|v3\\.3\\.0\\.x-FAIL"
+  "sentinel_content_v3_3_0_x_x_x|v3\\.3\\.0\\.x\\.x\\.x-FAIL"
+  "validator_v3_3_0_x_x_x_regex|v3\\.3\\.0\\.[0-9]+\\.[0-9]+\\.[0-9]+"
+  "sentinel_content_v3_3_0_x_x|v3\\.3\\.0\\.x\\.x-FAIL"
+  "validator_v3_3_0_x_x_regex|v3\\.3\\.0\\.[0-9]+\\.[0-9]+"
 )
 
 # Helper: extract unique-sorted set of regex matches from a file (null-safe)

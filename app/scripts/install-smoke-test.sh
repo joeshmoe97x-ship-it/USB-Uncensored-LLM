@@ -132,6 +132,37 @@ _restore_perm_snap() {
   fi
 }
 
+# v3.3.0.4 sibling helper: _restore_ownership_snap restores file ownership (user:group) from a snap file.
+# Sibling to _restore_perm_snap; called from EXIT trap.
+# Snap file format: one entry per line, tab-separated `file_path user:group`.
+_restore_ownership_snap() {
+  set +e
+  [ -n "${OWN_SNAP_FILE}" ] && [ -f "${OWN_SNAP_FILE}" ] || return 0
+  local skip_count=0
+  while IFS=$'\t\n\r' read -r file_path user_group || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    user_group="${user_group%"${user_group##*[![:space:]]}"}"
+    if [ -z "$file_path" ] || [ -z "$user_group" ]; then
+      skip_count=$((skip_count + 1))
+      continue
+    fi
+    if ! echo "$user_group" | grep -qE '^([a-zA-Z0-9_][a-zA-Z0-9_.-]*:[a-zA-Z0-9_][a-zA-Z0-9_.-]*|[0-9]+:[0-9]+)$'; then
+      skip_count=$((skip_count + 1))
+      continue
+    fi
+    case "$file_path" in
+      /*) [ -e "$file_path" ] && [ ! -L "$file_path" ] && chown "$user_group" "$file_path" 2>/dev/null ;;
+      *) skip_count=$((skip_count + 1)) ;;
+    esac
+  done < "${OWN_SNAP_FILE}"
+  rm -f "${OWN_SNAP_FILE}.tmp" "${OWN_SNAP_FILE}"
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_ownership_snap: snap had $skip_count malformed entries" >&2
+    return 1
+  fi
+}
+
+
 
 # Combined EXIT handler: covers both the v29 SMOKE_ROOT (existing) and the AUTO_REPAIR
 # matrix's symlink snapshot (new). Replaces the prior `trap cleanup EXIT` so a SIGNALed
