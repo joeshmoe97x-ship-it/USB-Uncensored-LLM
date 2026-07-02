@@ -35,10 +35,15 @@ readonly BUNDLE_FILE="${SMOKE_ROOT}/v29.bundle"
 readonly CLONE_DIR="${SMOKE_ROOT}/v29-clone"
 
 # AUTO_REPAIR matrix smoke state: capture-restore file path. Set by
+# v3.3.0.3.1: Capture perms before any chmod operations
+_capture_perm_snap
+
 # test_auto_repair_matrix on entry; read by script-level EXIT trap (combined_cleanup ->
 # _restore_autorepair_snap) so symlinks are ALWAYS restored on normal return OR
 # signal-induced exit (SIGINT/SIGTERM/SIGHUP). Empty string when the smoke didn't run.
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AUTO_REPAIR_SNAP_FILE=""
+PERM_SNAP_FILE=""
 
 cleanup() {
   if [[ -d "${SMOKE_ROOT}" ]]; then
@@ -132,6 +137,33 @@ _restore_perm_snap() {
   fi
 }
 
+# v3.3.0.3.1: Capture file permissions for restoration on EXIT.
+# Sibling to test_auto_repair_matrix (which captures symlinks for restoration);
+# both write to a snap file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tmode_octal`.
+# Atomic-rename: snap file is only visible to _restore_perm_snap after the full
+# write completes (SIGINT-during-write leaves .tmp only, which the helper cleans up).
+_capture_perm_snap() {
+  PERM_SNAP_FILE="$(mktemp -t permsnap-XXXXXX)"
+  local SNAP_TMP="${PERM_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f mode_octal
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      mode_octal=$(stat -c '%a' "$f" 2>/dev/null || echo "")
+      if [ -n "$mode_octal" ]; then
+        printf '%s\t%s\n' "$f" "$mode_octal" >> "$SNAP_TMP"
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$PERM_SNAP_FILE"
+}
+
+
 # v3.3.0.4 sibling helper: _restore_ownership_snap restores file ownership (user:group) from a snap file.
 # Sibling to _restore_perm_snap; called from EXIT trap.
 # Snap file format: one entry per line, tab-separated `file_path user:group`.
@@ -175,6 +207,7 @@ combined_cleanup() {
   set +e
   cleanup                 # original v29 SMOKE_ROOT cleanup (unchanged behavior)
   _restore_autorepair_snap  # optional AUTO_REPAIR matrix restore (no-op when unset)
+  _restore_perm_snap        # v3.3.0.3.1: Permission restoration (sibling to symlink restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
@@ -265,7 +298,7 @@ test_auto_repair_matrix() {
   # resolution works regardless of caller (sourced or bash install-smoke-test.sh directly).
   local SCR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local APP_DIR="$(cd "$SCR/.." && pwd)"
-  local REPO_ROOT="$(cd "$SCR/../.." && pwd)"
+  REPO_ROOT="$(cd "$SCR/../.." && pwd)"
   local SCRIPT="$APP_DIR/scripts/ensure-supabase-symlinks.sh"
   local ASSETS=(migrations functions seed.sql)
   # Set the script-level capture-restore file so the script-level EXIT trap
