@@ -191,6 +191,51 @@ _capture_ownership_snap() {
   mv -f "$SNAP_TMP" "$OWN_SNAP_FILE"
 }
 
+# v3.3.0.5: Capture file extended attributes (xattrs) for restoration on EXIT.
+# Sibling to _capture_perm_snap and _capture_ownership_snap; all 3 write to a snap
+# file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path	xattr_name	xattr_value`
+# (3 fields; matches _restore_xattr_snap's read format).
+# Atomic-rename: snap file is only visible to _restore_xattr_snap after the full
+# write completes (SIGINT-during-write leaves .tmp only, which the helper cleans up).
+# getfattr is Linux-only; skip gracefully (idempotent no-op) if not available.
+_capture_xattr_snap() {
+  if ! command -v getfattr >/dev/null 2>&1; then
+    return 0
+  fi
+  XATTR_SNAP_FILE="$(mktemp -t xattrsnap-XXXXXX)"
+  local SNAP_TMP="${XATTR_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f getfattr_output name value
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      # getfattr -d lists all xattrs; -m . matches all namespaces; -e text outputs
+      # values in text encoding (avoids binary-in-text-file issues). --absolute-names
+      # prevents the "# file: <basename>" header line from breaking the parse.
+      getfattr_output=$(getfattr -d -m . -e text --absolute-names "$f" 2>/dev/null)
+      if [ -n "$getfattr_output" ]; then
+        # Parse output: skip lines starting with #, extract name="value" pairs.
+        # Format from getfattr: <name>="<value>" (one xattr per line).
+        # Use bash regex (not gawk match-array) for portability with mawk.
+        while IFS= read -r line; do
+          [[ "$line" == \#* ]] && continue
+          if [[ "$line" =~ ^([^=]+)="(.*)"$ ]]; then
+            name="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+            printf '%s\t%s\t%s\n' "$f" "$name" "$value" >> "$SNAP_TMP"
+          fi
+        done <<< "$getfattr_output"
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$XATTR_SNAP_FILE"
+}
+
+
 # Capture perms + ownership for restoration on EXIT.
 # Sibling to test_auto_repair_matrix (which captures symlinks); all 3 write to a snap
 # file consumed by the corresponding _restore_* helper at EXIT.
@@ -198,6 +243,8 @@ _capture_ownership_snap() {
 # Called here (after function definitions) because bash does NOT hoist function defs.
 _capture_perm_snap
 _capture_ownership_snap
+# v3.3.0.5: Capture xattrs before any setfattr operations
+_capture_xattr_snap
 
 
 
@@ -293,6 +340,7 @@ combined_cleanup() {
   _restore_autorepair_snap  # optional AUTO_REPAIR matrix restore (no-op when unset)
   _restore_perm_snap        # v3.3.0.3.1: Permission restoration (sibling to symlink restoration)
   _restore_ownership_snap   # v3.3.0.4: Ownership restoration (sibling to permission restoration)
+  _restore_xattr_snap        # v3.3.0.5: xattr restoration (sibling to ownership restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
