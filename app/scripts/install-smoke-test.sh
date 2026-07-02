@@ -46,6 +46,7 @@ AUTO_REPAIR_SNAP_FILE=""
 PERM_SNAP_FILE=""
 OWN_SNAP_FILE=""
 ACL_SNAP_FILE=""
+CAP_SNAP_FILE=""
 SELINUX_SNAP_FILE=""
 
 cleanup() {
@@ -294,6 +295,45 @@ _capture_acl_snap() {
   mv -f "$SNAP_TMP" "$ACL_SNAP_FILE"
 }
 
+# v3.3.0.7.1: Capture Linux file capabilities for restoration on EXIT (closes the v3.3.0.7 dormancy gap).
+# Sibling to _capture_acl_snap (which captures POSIX ACLs), _capture_selinux_snap, _capture_xattr_snap,
+# _capture_ownership_snap, _capture_perm_snap; all 6 write to a snap file consumed by the corresponding
+# _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path\tcap_string`.
+# Uses `getcap` (if available) to enumerate Linux file capabilities; parses the cap string
+# from getcap output. The cap_string is in libcap2 format consumed by setcap in _restore_cap_snap.
+# Uses mktemp + atomic-rename pattern to avoid partial-write race conditions.
+# getcap is Linux-only and requires libcap2-bin; skip gracefully (idempotent no-op) if not available.
+_capture_cap_snap() {
+  if ! command -v getcap >/dev/null 2>&1; then
+    return 0
+  fi
+  CAP_SNAP_FILE="$(mktemp -t capsnap-XXXXXX)"
+  local SNAP_TMP="${CAP_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f getcap_output cap_string
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      # getcap output format: `<path> <cap_string>` where cap_string is like `cap_chown,cap_dac_override=ep`
+      # or empty if no capabilities are set. Skip files with no capabilities (empty cap_string)
+      # to avoid no-op restores (mirrors the v3.3.0.8 SELinux "only capture non-default" pattern).
+      getcap_output=$(getcap "$f" 2>/dev/null | awk -v fp="$f" '$1 == fp { $1=""; sub(/^ /, ""); print; exit }')
+      if [ -n "$getcap_output" ]; then
+        # Validate cap_string format (same as _restore_cap_snap's validation)
+        if [[ "$getcap_output" =~ ^([=+-][pe]*)?cap_[a-z_]+$ ]]; then
+          printf '%s\t%s\n' "$f" "$getcap_output" >> "$SNAP_TMP"
+        fi
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$CAP_SNAP_FILE"
+}
+
+
 # v3.3.0.8: Capture SELinux file contexts for restoration on EXIT.
 # Sibling to _capture_xattr_snap (which captures xattrs), _capture_ownership_snap, _capture_perm_snap;
 # all 4 write to a snap file consumed by the corresponding _restore_* helper at EXIT.
@@ -342,6 +382,8 @@ _capture_ownership_snap
 _capture_xattr_snap
 # v3.3.0.6.1: Capture POSIX ACLs before any setfacl operations (closes v3.3.0.6 dormancy gap; sibling to xattr capture)
 _capture_acl_snap
+# v3.3.0.7.1: Capture Linux capabilities before any setcap operations (closes v3.3.0.7 dormancy gap; sibling to ACL capture)
+_capture_cap_snap
 # v3.3.0.8: Capture SELinux contexts before any restorecon operations
 _capture_selinux_snap
 
@@ -589,6 +631,7 @@ combined_cleanup() {
   _restore_ownership_snap   # v3.3.0.4: Ownership restoration (sibling to permission restoration)
   _restore_xattr_snap        # v3.3.0.5: xattr restoration (sibling to ownership restoration)
   _restore_acl_snap               # v3.3.0.6.1: POSIX ACL restoration (closes v3.3.0.6 dormancy gap; sibling to xattr restoration)
+  _restore_cap_snap               # v3.3.0.7.1: Linux capability restoration (closes v3.3.0.7 dormancy gap; sibling to ACL restoration)
   _restore_selinux_snap        # v3.3.0.8: SELinux context restoration (sibling to xattr restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
