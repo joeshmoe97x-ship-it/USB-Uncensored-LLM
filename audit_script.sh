@@ -252,6 +252,58 @@ rm -f /tmp/audit-v3151-fail.txt
     echo "   no-state-keyword count: $no_state_count (max $no_state_max; PASS)"
   fi
 
+  # v3.3.0.x: sub-cycle validator (catches v3.3.0.<digit>+ specifically; runs BEFORE the v3.3.0 parent validator to surface sub-cycle-specific FAIL messages first)
+  #   - mirrors the v3.1.5.2-before-v3.1.5.1 ordering convention (sub-cycle-specific regex runs first)
+  #   - sub-cycle-specific regex: "v3\\.3\\.0\\.[0-9]+(\\.[0-9]+)*" (literal v3.3.0.<digit>+ with optional sub-sub-cycles)
+  #     this matches v3.3.0.1, v3.3.0.2, v3.3.0.1.1, ... but NOT v3.3.0 alone (covered by v3.3.0 parent validator)
+  #   - parent SLUG: same as v3.3.0 = `### Adopted: auto-symlink-helper (v3.3.0)`
+  #   - sentinel-write: writes "v3.3.0.x-FAIL" to /tmp/audit-v3151-fail.txt (SHARED sentinel filename with v3.1.5.1 + v3.1.5.2 + v3.3.0; distinguishable content per cycle)
+  #   - VALIDATOR ORDER: this validator runs BEFORE v3.3.0 (parent validator runs at L291; v3.3.0.x runs at the new L420+ position). When a future v3.3.0.x peer-registration is detected, this validator surfaces first with a v3.3.0.x-specific FAIL message
+  echo
+  echo "-- v3.3.0.x: sub-cycle validator (catches v3.3.0.<digit>+ specifically; runs BEFORE v3.3.0 parent) --"
+  if [ -n "$md_files" ]; then
+    v330x_violations=""
+    for f in $md_files; do
+      file_result=$(awk -v parent="### Adopted: auto-symlink-helper (v3.3.0)" '
+        BEGIN { in_parent = 0 }
+        {
+          if ($0 ~ /^### /) {
+            in_parent = ($0 == parent) ? 1 : 0
+          }
+          # v3.3.0.x validator: parent-declaration-anchored regex (only catches markers whose
+          # SUBJECT is v3.3.0.<digit>+ - i.e. `[audit-note: v3.3.0.N ...]` openings for any N
+          # including sub-sub-cycles like v3.3.0.1.1). The v3.3.0 parent validator (which
+          # catches v3.3.0 ALONE) would also catch v3.3.0.x markers, but the v3.3.0.x
+          # validator runs FIRST to surface the sub-cycle-specific FAIL attribution.
+          if (match($0, /\\[audit-note: v3\\.3\\.0\\.[0-9]+(\\.[0-9]+)*(\\[[^]]*\\]|[^]])*\\]/)) {
+            if (in_parent == 0) {
+              printf "%s:%d:%s\n", FILENAME, NR, $0
+            }
+          }
+        }
+      ' "$f" 2>/dev/null)
+      if [ -n "$file_result" ]; then
+        if [ -z "$v330x_violations" ]; then
+          v330x_violations="$file_result"
+        else
+          v330x_violations="$v330x_violations
+$file_result"
+        fi
+      fi
+    done
+    if [ -n "$v330x_violations" ]; then
+      echo "$v330x_violations"
+      echo
+      echo "   FAIL: v3.3.0.x audit-note marker detected OUTSIDE the parent H3 Adopted section (peer-row registration violates the v3.3.0 forward-extension-surface contract for the v3.3.0.x sub-cycle). Per the Adopted H3 contract, v3.3.0.x sub-cycle markers register as H3 sub-bullets under parent SLUG #adopted-auto-symlink-helper-v3-3-0 -- NOT as peer inventory rows 29+ (the inventory row count stays stable at 28 indefinitely forward). Move the marker into the parent H3 Adopted section as a sub-bullet, OR revise the marker identity to NOT reference v3.3.0.x (use v3.3.0 alone to reference the parent cycle). See app/docs/ops-notes.md ### Adopted: auto-symlink-helper (v3.3.0) for the canonical sub-bullet registration example. The v3.3.0.x validator runs BEFORE v3.3.0 so its sub-cycle-specific FAIL message surfaces (otherwise v3.3.0's broader regex would catch v3.3.0.x markers first with a v3.3.0-attributed FATAL)." >&2
+      echo 'v3.3.0.x-FAIL' > /tmp/audit-v3151-fail.txt
+      exit 1
+    else
+      echo "   v3.3.0.x peer-row registrations: 0 (PASS; forward-extension-surface contract preserved)"
+    fi
+  else
+    echo "   (no .md files tracked by git)"
+  fi
+
   # v3.3.0: forward-extension-surface registration mechanical-validator sibling (inaugural v3.3.x sub-cycle applying the v3.1.5 SLUG convention to a NEW parent cycle; closes the L534 STATE OPEN auto-symlink-helper deferral)
   #   - mirrors the v3.1.5.1 + v3.1.5.2 validators' awk state-machine back-bone + sentinel-write + post-tee FAIL gate pattern,
   #     but with a NEW parent SLUG = `### Adopted: auto-symlink-helper for gitignored Supabase assets (v3.3.0)`

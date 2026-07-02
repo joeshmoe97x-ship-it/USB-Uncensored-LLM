@@ -58,6 +58,14 @@ _restore_autorepair_snap() {
   # guards against `read` returning non-zero on EOF when the last line lacks a trailing
   # newline (the fields are still in scope, so we process the partial line).
   while IFS=$'\t\n\r' read -r link target || [ -n "$link" ]; do
+    # v3.3.0.2 item 5: strip trailing whitespace from link and target. The `IFS=\t\n\r`
+    # in `read` only catches \t\n\r as field separators; trailing SPACES (or other
+    # whitespace) on a line would pass through to `ln -sfn` and create a broken
+    # symlink pointing at "<target> " (with literal trailing space). Bash parameter
+    # expansion `${var%${var##*[![:space:]]}}` strips trailing whitespace without
+    # spawning a subshell.
+    link="${link%"${link##*[![:space:]]}"}"
+    target="${target%"${target##*[![:space:]]}"}"
     # Defensive entry validation: skip lines where EITHER link OR target is empty
     # (malformed partial-write artifact). Both fields required for restoration semantics.
     if [ -z "$link" ] || [ -z "$target" ]; then

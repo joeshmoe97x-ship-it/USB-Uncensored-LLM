@@ -59,6 +59,8 @@ DRIFT_ANCHORS=(
   "sentinel_content_v3_3|v3\\.3\\.0-FAIL"
   "parent_h3_v3_3|### Adopted: auto-symlink-helper \\(v3\\.3\\.0\\)"
   "post_tee_gate_dynamic_reader|cat.*audit-v3151-fail\\.txt"
+  "validator_v3_3_0_x_regex|v3\\.3\\.0\\.[0-9]+"
+  "sentinel_content_v3_3_0_x|v3\\.3\\.0\\.x-FAIL"
 )
 
 # Helper: extract unique-sorted set of regex matches from a file (null-safe)
