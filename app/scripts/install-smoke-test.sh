@@ -194,6 +194,53 @@ _restore_ownership_snap() {
   fi
 }
 
+# v3.3.0.5 sibling helper: _restore_xattr_snap restores file extended attributes (xattrs) from a snap file.
+# Sibling to _restore_ownership_snap (which restores user:group) and _restore_perm_snap (which restores modes);
+# all 3 are called from the EXIT trap so per-test mutations to host file xattrs/perms/ownership are ALWAYS
+# restored on normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, tab-separated `file_path	xattr_name	xattr_value`.
+# 3 hardening items mirroring v3.3.0.1/v3.3.0.2/v3.3.0.3/v3.3.0.4 patterns: (1) entry-validation, (2) trailing-whitespace
+# strip, (3) absolute-path-only case glob + symlink-skip, (4) setfattr-availability guard + EOF-safety guard.
+_restore_xattr_snap() {
+  set +e
+  [ -n "${XATTR_SNAP_FILE}" ] && [ -f "${XATTR_SNAP_FILE}" ] || { rm -f "${XATTR_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
+  # setfattr is Linux-only and may not be available on all systems (e.g., macOS, minimal containers).
+  # Check once at helper start; if unavailable, emit a single WARN and return 0 (idempotent no-op).
+  if ! command -v setfattr >/dev/null 2>&1; then
+    echo "WARN: _restore_xattr_snap: setfattr not available on this system; skipping xattr restoration" >&2
+    return 0
+  fi
+  local file_path="" xattr_name="" xattr_value="" skip_count=0 restore_count=0
+  while IFS=$'\t\n\r' read -r file_path xattr_name xattr_value || [ -n "$file_path" ]; do
+    # Strip trailing whitespace from each field (entry-validation hardening)
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    xattr_name="${xattr_name%"${xattr_name##*[![:space:]]}"}"
+    xattr_value="${xattr_value%"${xattr_value##*[![:space:]]}"}"
+    # Skip empty entries (entry-validation hardening)
+    [ -z "$file_path" ] || [ -z "$xattr_name" ] && { skip_count=$((skip_count+1)); continue; }
+    # Absolute-path-only case glob: skip relative paths and symlinks (hardening)
+    case "$file_path" in /*) ;; *) skip_count=$((skip_count+1)); continue ;; esac
+    [ ! -L "$file_path" ] || { skip_count=$((skip_count+1)); continue; }
+    # xattr_name must match POSIX-safe identifier pattern: alphanumeric, dot, dash, underscore, colon
+    # (avoids shell-injection via crafted snap entries)
+    if ! [[ "$xattr_name" =~ ^[a-zA-Z][a-zA-Z0-9._:-]*$ ]]; then
+      skip_count=$((skip_count+1))
+      continue
+    fi
+    if setfattr -n "$xattr_name" -v "$xattr_value" "$file_path" 2>/dev/null; then
+      restore_count=$((restore_count+1))
+    else
+      skip_count=$((skip_count+1))
+    fi
+  done < "${XATTR_SNAP_FILE}"
+  rm -f "${XATTR_SNAP_FILE}.tmp" 2>/dev/null
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_xattr_snap: restored $restore_count xattrs, skipped $skip_count malformed entries" >&2
+  fi
+  return 0
+}
+
+
 
 
 # Combined EXIT handler: covers both the v29 SMOKE_ROOT (existing) and the AUTO_REPAIR
