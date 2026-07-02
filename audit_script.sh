@@ -275,7 +275,7 @@ rm -f /tmp/audit-v3151-fail.txt
           # including sub-sub-cycles like v3.3.0.1.1). The v3.3.0 parent validator (which
           # catches v3.3.0 ALONE) would also catch v3.3.0.x markers, but the v3.3.0.x
           # validator runs FIRST to surface the sub-cycle-specific FAIL attribution.
-          if (match($0, /\\[audit-note: v3\\.3\\.0\\.[0-9]+(\\.[0-9]+)*(\\[[^]]*\\]|[^]])*\\]/)) {
+          if (match($0, /\[audit-note: v3\.3\.0\.[0-9]+(\.[0-9]+)*(\[[^]]*\]|[^]])*\]/)) {
             if (in_parent == 0) {
               printf "%s:%d:%s\n", FILENAME, NR, $0
             }
@@ -303,6 +303,51 @@ $file_result"
   else
     echo "   (no .md files tracked by git)"
   fi
+
+  # v3.3.0.x.x: sub-sub-cycle validator (catches v3.3.0.<digit>.<digit>+ specifically; runs BEFORE the v3.3.0.x sub-cycle validator)
+  #   - sub-sub-cycle-specific regex: "v3\.3\.0\.[0-9]+\.[0-9]+" (requires AT LEAST 2 dot-digit groups after v3.3.0)
+  #   - parent SLUG: same as v3.3.0 = `### Adopted: auto-symlink-helper (v3.3.0)`
+  #   - sentinel-write: writes "v3.3.0.x.x-FAIL" to /tmp/audit-v3151-fail.txt
+  echo
+  echo "-- v3.3.0.x.x: sub-sub-cycle validator --"
+  if [ -n "$md_files" ]; then
+    v330xx_violations=""
+    for f in $md_files; do
+      file_result=$(awk -v parent="### Adopted: auto-symlink-helper (v3.3.0)" '
+        BEGIN { in_parent = 0 }
+        {
+          if ($0 ~ /^### /) {
+            in_parent = ($0 == parent) ? 1 : 0
+          }
+          if (match($0, /\[audit-note: v3\.3\.0\.[0-9]+\.[0-9]+(\\[[^]]*\\]|[^]])*\]/)) {
+            if (in_parent == 0) {
+              printf "%s:%d:%s\n", FILENAME, NR, $0
+            }
+          }
+        }
+      ' "$f" 2>/dev/null)
+      if [ -n "$file_result" ]; then
+        if [ -z "$v330xx_violations" ]; then
+          v330xx_violations="$file_result"
+        else
+          v330xx_violations="$v330xx_violations
+$file_result"
+        fi
+      fi
+    done
+    if [ -n "$v330xx_violations" ]; then
+      echo "$v330xx_violations"
+      echo
+      echo "   FAIL: v3.3.0.x.x audit-note marker detected OUTSIDE the parent H3 Adopted section." >&2
+      echo 'v3.3.0.x.x-FAIL' > /tmp/audit-v3151-fail.txt
+      exit 1
+    else
+      echo "   v3.3.0.x.x peer-row registrations: 0 (PASS)"
+    fi
+  else
+    echo "   (no .md files tracked by git)"
+  fi
+
 
   # v3.3.0: forward-extension-surface registration mechanical-validator sibling (inaugural v3.3.x sub-cycle applying the v3.1.5 SLUG convention to a NEW parent cycle; closes the L534 STATE OPEN auto-symlink-helper deferral)
   #   - mirrors the v3.1.5.1 + v3.1.5.2 validators' awk state-machine back-bone + sentinel-write + post-tee FAIL gate pattern,

@@ -101,6 +101,38 @@ _restore_autorepair_snap() {
   fi
 }
 
+# v3.3.0.3 sibling helper: _restore_perm_snap restores file permission mode bits from a snap file.
+# Sibling to _restore_autorepair_snap; called from EXIT trap so per-test mutations to host file permissions
+# are restored on normal-return OR signal-induced exit (SIGINT/SIGTERM/SIGHUP).
+# Snap file format: one entry per line, whitespace-separated `file_path mode_octal`.
+_restore_perm_snap() {
+  set +e
+  [ -n "${PERM_SNAP_FILE}" ] && [ -f "${PERM_SNAP_FILE}" ] || return 0
+  local skip_count=0
+  while IFS=$'\t\n\r' read -r file_path mode_octal || [ -n "$file_path" ]; do
+    file_path="${file_path%"${file_path##*[![:space:]]}"}"
+    mode_octal="${mode_octal%"${mode_octal##*[![:space:]]}"}"
+    if [ -z "$file_path" ] || [ -z "$mode_octal" ]; then
+      skip_count=$((skip_count + 1))
+      continue
+    fi
+    if ! echo "$mode_octal" | grep -qE '^[0-7]{3,4}$'; then
+      skip_count=$((skip_count + 1))
+      continue
+    fi
+    case "$file_path" in
+      /*) [ -e "$file_path" ] && [ ! -L "$file_path" ] && chmod "$mode_octal" "$file_path" ;;
+      *) skip_count=$((skip_count + 1)) ;;
+    esac
+  done < "${PERM_SNAP_FILE}"
+  rm -f "${PERM_SNAP_FILE}.tmp" "${PERM_SNAP_FILE}"
+  if [ "$skip_count" -gt 0 ]; then
+    echo "WARN: _restore_perm_snap: snap had $skip_count malformed entries" >&2
+    return 1
+  fi
+}
+
+
 # Combined EXIT handler: covers both the v29 SMOKE_ROOT (existing) and the AUTO_REPAIR
 # matrix's symlink snapshot (new). Replaces the prior `trap cleanup EXIT` so a SIGNALed
 # exit mid-smoke still restores the host symlink state.
