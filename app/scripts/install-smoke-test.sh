@@ -35,8 +35,8 @@ readonly BUNDLE_FILE="${SMOKE_ROOT}/v29.bundle"
 readonly CLONE_DIR="${SMOKE_ROOT}/v29-clone"
 
 # AUTO_REPAIR matrix smoke state: capture-restore file path. Set by
-# v3.3.0.3.1: Capture perms before any chmod operations
-_capture_perm_snap
+# v3.3.0.3.1 + v3.3.0.4: Capture perms + ownership before any chmod/chown operations
+# (capture calls moved below to after function definitions; bash does NOT hoist function defs)
 
 # test_auto_repair_matrix on entry; read by script-level EXIT trap (combined_cleanup ->
 # _restore_autorepair_snap) so symlinks are ALWAYS restored on normal return OR
@@ -44,6 +44,7 @@ _capture_perm_snap
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 AUTO_REPAIR_SNAP_FILE=""
 PERM_SNAP_FILE=""
+OWN_SNAP_FILE=""
 
 cleanup() {
   if [[ -d "${SMOKE_ROOT}" ]]; then
@@ -163,6 +164,42 @@ _capture_perm_snap() {
   mv -f "$SNAP_TMP" "$PERM_SNAP_FILE"
 }
 
+# v3.3.0.4: Capture file ownership (user:group) for restoration on EXIT.
+# Sibling to _capture_perm_snap (which captures permission modes); both write to
+# a snap file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Snap file format: one entry per line, tab-separated `file_path	user:group`.
+# Atomic-rename: snap file is only visible to _restore_ownership_snap after the
+# full write completes (SIGINT-during-write leaves .tmp only, which the helper
+# cleans up).
+_capture_ownership_snap() {
+  OWN_SNAP_FILE="$(mktemp -t ownsnap-XXXXXX)"
+  local SNAP_TMP="${OWN_SNAP_FILE}.tmp"
+  : > "$SNAP_TMP"
+  local f user_group
+  for f in \
+    "${REPO_ROOT}/supabase/migrations" \
+    "${REPO_ROOT}/supabase/functions" \
+    "${REPO_ROOT}/supabase/seed.sql"; do
+    if [ -e "$f" ] && [ ! -L "$f" ]; then
+      user_group=$(stat -c '%U:%G' "$f" 2>/dev/null || echo "")
+      if [ -n "$user_group" ]; then
+        printf '%s\t%s\n' "$f" "$user_group" >> "$SNAP_TMP"
+      fi
+    fi
+  done
+  mv -f "$SNAP_TMP" "$OWN_SNAP_FILE"
+}
+
+# Capture perms + ownership for restoration on EXIT.
+# Sibling to test_auto_repair_matrix (which captures symlinks); all 3 write to a snap
+# file consumed by the corresponding _restore_* helper at EXIT.
+# Target files: $REPO_ROOT/supabase/{migrations,functions,seed.sql}.
+# Called here (after function definitions) because bash does NOT hoist function defs.
+_capture_perm_snap
+_capture_ownership_snap
+
+
 
 # v3.3.0.4 sibling helper: _restore_ownership_snap restores file ownership (user:group) from a snap file.
 # Sibling to _restore_perm_snap; called from EXIT trap.
@@ -255,6 +292,7 @@ combined_cleanup() {
   cleanup                 # original v29 SMOKE_ROOT cleanup (unchanged behavior)
   _restore_autorepair_snap  # optional AUTO_REPAIR matrix restore (no-op when unset)
   _restore_perm_snap        # v3.3.0.3.1: Permission restoration (sibling to symlink restoration)
+  _restore_ownership_snap   # v3.3.0.4: Ownership restoration (sibling to permission restoration)
   local restore_rc=$?
   if [ "$restore_rc" -ne 0 ]; then
     # Helper signaled partial-restore (WARN already emitted to stderr). Propagate
