@@ -50,6 +50,7 @@ ACL_SNAP_FILE=""
 CAP_SNAP_FILE=""
 CHATTR_SNAP_FILE=""
 QUOTA_SNAP_FILE=""
+ACLTOOL_SNAP_FILE=""
 SELINUX_SNAP_FILE=""
 
 cleanup() {
@@ -418,6 +419,93 @@ _capture_quota_snap() {
   mv -f "$SNAP_TMP" "$QUOTA_SNAP_FILE"
 }
 
+# v3.3.0.11: Capture richer ACL state (extended ACE entries) for restoration on EXIT.
+# Sibling to _capture_acl_snap (which captures minimal ACLs with >3 entries only), _capture_selinux_snap,
+# _capture_chattr_snap, _capture_cap_snap, _capture_xattr_snap, _capture_ownership_snap, _capture_perm_snap.
+# This helper captures ALL non-default ACLs (including 3-entry standard ACLs that _capture_acl_snap
+# skips) using getfacl -pn --omit-header, preserving the full ACL entry types (user::, user:name:,
+# group::, group:name:, mask::, other::) and any extended ACE entries.
+_capture_acltool_snap() {
+  if ! command -v getfacl >/dev/null 2>&1; then
+    return 0
+  fi
+  ACLTOOL_SNAP_FILE=$(mktemp 2>/dev/null) || {
+    echo "WARNING: _capture_acltool_snap: mktemp failed; skipping richer ACL capture" >&2
+    return 0
+  }
+  trap 'rm -f "$ACLTOOL_SNAP_FILE"' RETURN
+
+  # Iterate over the same target files as _capture_acl_snap (REPO_ROOT/supabase/{migrations,functions,seed.sql})
+  local target_paths=(
+    "$REPO_ROOT/supabase/migrations"
+    "$REPO_ROOT/supabase/functions"
+    "$REPO_ROOT/supabase/seed.sql"
+  )
+  for target in "${target_paths[@]}"; do
+    if [ -e "$target" ]; then
+      # getfacl -pn: -p (no path slash-removal), -n (numeric IDs); -R recursive for directories
+      # Output: lines like `user::rwx`, `user:name:r--`, `group::r--`, `mask::r--`, `other::r--`
+      # Separator between files: blank line; we record `file_path\tacl_entry` per line, blank line = file boundary
+      getfacl -pn -R "$target" 2>/dev/null | awk -v snapfile="$ACLTOOL_SNAP_FILE" '
+        BEGIN { current_file = "" }
+        /^# file: / { current_file = $3; next }
+        /^$/ { current_file = ""; next }
+        /^# / { next }
+        current_file != "" && NF >= 1 {
+          entry = $0
+          sub(/[[:space:]]+$/, "", entry)
+          if (entry ~ /^(user|group|mask|other):/) {
+            printf "%s\t%s\n", current_file, entry >> snapfile
+          }
+        }
+      '
+    fi
+  done
+
+  # Non-default filter: only keep files that have non-default ACL entries (i.e. any line other than
+  # user::, group::, other:: with default-mode perms, or mask:: if present). This avoids the
+  # behavioral change of transitioning files from "no ACL" to "has minimal ACL" via setfacl.
+  # Build a dedup'd list of files with non-default entries; rewrite the snap with only those.
+  local tmp_filtered
+  tmp_filtered=$(mktemp 2>/dev/null) || tmp_filtered="$ACLTOOL_SNAP_FILE"
+  awk -F'\t' '
+    {
+      file = $1
+      entry = $2
+      # Non-default detection: any ACL entry that is NOT user::<mode>, group::<mode>, other::<mode>,
+      # or mask::<mode> is a non-default ACE (named user, named group, or default ACL).
+      if (entry !~ /^(user::|group::|other::|mask::)[rwx-]+$/) {
+        nondefault[file] = 1
+      } else {
+        default[file] = 1
+      }
+    }
+    END {
+      for (f in nondefault) print f
+    }
+  ' "$ACLTOOL_SNAP_FILE" | sort -u > "$tmp_filtered"
+
+  if [ -s "$tmp_filtered" ]; then
+    local files_with_nondefault
+    files_with_nondefault=$(cat "$tmp_filtered")
+    local tmp_final
+    tmp_final=$(mktemp 2>/dev/null) || tmp_final="$ACLTOOL_SNAP_FILE"
+    : > "$tmp_final"
+    for f in $files_with_nondefault; do
+      awk -F'\t' -v target="$f" '$1 == target { print }' "$ACLTOOL_SNAP_FILE" >> "$tmp_final"
+    done
+    mv "$tmp_final" "$ACLTOOL_SNAP_FILE"
+  else
+    # No non-default ACLs captured -- empty snap (no restore needed)
+    : > "$ACLTOOL_SNAP_FILE"
+  fi
+  rm -f "$tmp_filtered"
+
+  local entry_count
+  entry_count=$(wc -l < "$ACLTOOL_SNAP_FILE" 2>/dev/null || echo 0)
+  echo "INFO: _capture_acltool_snap captured $entry_count non-default ACL entries" >&2
+}
+
 
 
 
@@ -477,6 +565,7 @@ _capture_selinux_snap
 _capture_chattr_snap
 # v3.3.0.10: Capture filesystem quotas before any setquota operations
 _capture_quota_snap
+_capture_acltool_snap
 
 
 
@@ -703,6 +792,7 @@ _restore_chattr_snap() {
 # strip, (3) absolute-path-only case glob + symlink-skip, (4) setquota-availability guard + user_group
 # POSIX-identifier validation + quota_string numeric-fields validation + EOF-safety guard.
 _restore_quota_snap() {
+  _restore_acltool_snap
   set +e
   [ -n "${QUOTA_SNAP_FILE}" ] && [ -f "${QUOTA_SNAP_FILE}" ] || { rm -f "${QUOTA_SNAP_FILE}.tmp" 2>/dev/null; return 0; }
   # setquota is Linux-only and may not be available on all systems.
@@ -739,6 +829,70 @@ _restore_quota_snap() {
     echo "WARN: _restore_quota_snap: restored $restore_count quotas, skipped $skip_count malformed entries" >&2
   fi
   return 0
+}
+
+# v3.3.0.11: Restore richer ACL state (extended ACE entries) from a snap file on EXIT.
+# Sibling to _restore_acl_snap, _restore_selinux_snap, _restore_chattr_snap, _restore_cap_snap,
+# _restore_xattr_snap, _restore_ownership_snap, _restore_perm_snap, _restore_autorepair_snap.
+# This helper restores non-default ACL entries via setfacl -m, preserving the full ACL entry types
+# captured by _capture_acltool_snap.
+_restore_acltool_snap() {
+  if ! command -v setfacl >/dev/null 2>&1; then
+    echo "WARNING: _restore_acltool_snap: setfacl not available; skipping richer ACL restore" >&2
+    return 0
+  fi
+  if [ -z "${ACLTOOL_SNAP_FILE:-}" ] || [ ! -s "$ACLTOOL_SNAP_FILE" ]; then
+    return 0
+  fi
+  local restored=0
+  local skipped=0
+  while IFS=$'\t\n\r' read -r file_path acl_entry; do
+    # (1) Entry-validation: snap format is `file_path\tacl_entry`; both must be non-empty.
+    if [ -z "$file_path" ] || [ -z "$acl_entry" ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    # (2) Trailing-whitespace strip on acl_entry (defensive; should already be stripped in capture)
+    acl_entry="${acl_entry%"${acl_entry##*[![:space:]]}"}"
+    # (3) Absolute-path-only case glob + symlink-skip: only restore on real files (not symlinks, dirs
+    # that no longer exist, or relative paths that could resolve outside the repo)
+    if [[ "$file_path" != /* ]]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if [ -L "$file_path" ]; then
+      # Skip symlinks -- setfacl follows symlinks by default but we want explicit skip for safety
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if [ ! -e "$file_path" ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    # (4) acl_entry validation: must be a valid ACL entry per the format captured.
+    # Valid forms: user::rwx, user:name:r--, group::r--, group:name:r--, mask::r--, other::r--,
+    # default:user::rwx, default:user:name:r--, etc.
+    if [[ ! "$acl_entry" =~ ^(default:)?(user|group|mask|other):([a-zA-Z0-9_][a-zA-Z0-9_.-]*:)?[rwx-]{1,3}$ ]]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    # EOF-safety guard: do not restore on a deleted/invalid file (double-check before setfacl)
+    if [ ! -f "$file_path" ] && [ ! -d "$file_path" ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if setfacl -m "$acl_entry" "$file_path" 2>/dev/null; then
+      restored=$((restored + 1))
+    else
+      skipped=$((skipped + 1))
+    fi
+  done < "$ACLTOOL_SNAP_FILE"
+  if [ "$skipped" -gt 0 ]; then
+    echo "WARNING: _restore_acltool_snap restored $restored entries, skipped $skipped (invalid path/entry/format)" >&2
+  else
+    echo "INFO: _restore_acltool_snap restored $restored richer ACL entries" >&2
+  fi
+  rm -f "$ACLTOOL_SNAP_FILE"
 }
 
 
